@@ -1,0 +1,22 @@
+[package]
+name = "repeatrs-db"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-proto = { path = "../repeatrs-proto" }
+repeatrs-domain = { path = "../repeatrs-domain" }
+serde.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+croner.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]

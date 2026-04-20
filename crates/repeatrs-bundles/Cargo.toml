@@ -1,0 +1,10 @@
+[package]
+name = "repeatrs-bundles"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-db = { path = "../repeatrs-db" }
+repeatrs-nats = { path = "../repeatrs-nats" }
+repeatrs-domain = { path = "../repeatrs-domain" }
+async-nats.workspace = true

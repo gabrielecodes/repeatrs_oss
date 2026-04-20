@@ -1,0 +1,37 @@
+[package]
+name = "repeatrs-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-proto = { path = "../repeatrs-proto" }
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+croner.workspace = true
+serde_json.workspace = true
+config.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+chrono.workspace = true
+tabled = "0.20.0"
+clap = { version = "=4.5.53", features = ["derive", "env"] }
+tonic = "0.14.3"
+tower = "0.5.3"
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
+
+[dev-dependencies]
+tokio-stream = { version = "0.1", features = ["net"] }

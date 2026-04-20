@@ -1,0 +1,15 @@
+[package]
+name = "repeatrs-transaction"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-db = { path = "../repeatrs-db" }
+futures = "0.3.32"
+rand = "0.10.0"
+sqlx.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+async-nats.workspace = true
+tokio.workspace = true
+tracing.workspace = true

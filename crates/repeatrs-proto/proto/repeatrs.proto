@@ -1,0 +1,125 @@
+syntax = "proto3";
+package repeatrs.v1;
+import "google/protobuf/timestamp.proto";
+
+// --------------------------------------------------
+// CLI - Scheduler Services
+//
+// Service | Message
+// --------|----------------------------------------- 
+// Job:    | AddJob, DeadctivateJob, DeleteJob,
+// Worker: | AddWorker, TerminateWorker, DeleteWorker
+// Queue:  | AddQueue, DeleteQueue
+// --------------------------------------------------
+
+// ------------ Job Service ------------
+
+// Defines methods to interact with `job`s.
+service GrpcJobService {
+  // Adds a job
+  rpc AddJob (AddJobRequest) returns (JobServiceResponse);
+  // Sets a job to INACTIVE
+  rpc DeactivateJob (JobIdentifierRequest) returns (JobServiceResponse);
+  // Deletes a job from the db
+  rpc DeleteJob (JobIdentifierRequest) returns (JobServiceResponse);
+  // List jobs
+  rpc ListJobs (QueueIdentifierRequest) returns (JobListResponse); 
+}
+
+message AddJobRequest {
+  // required fields
+  string job_name = 1;
+  string schedule = 2; // e.g., cron "* * * * *"
+  string image_name = 3; // e.g., "docker-repo/image:tag"
+  string queue_name = 4;
+  
+  // defaults provided
+  int32 max_retries = 5;
+  int32 priority = 6; // default = 1
+  int32 max_concurrency = 7; // default = 100
+  int32 timeout_seconds = 8; // default = 7200
+
+  // optional fields
+  optional string description = 9;
+  optional string options = 10;
+  optional string command = 11;
+  repeated string args = 12;
+}
+
+message JobIdentifierRequest {
+  oneof job_identifier {
+    string job_id = 1;
+    string job_name = 2;
+  }
+}
+
+message JobServiceResponse {
+  string job_id = 1;
+  bool success = 2;
+}
+
+
+message QueueIdentifierRequest {
+  oneof queue_identifier {
+    string queue_id = 1;
+    string queue_name = 2;
+  }
+}
+
+message JobItem {
+  string job_id = 1;
+  string job_name = 2;
+  string status = 4;
+  string schedule = 5;
+  string image_name = 6;
+  string queue_name = 7;
+  int32 max_retries = 8;
+  int32 priority = 9;
+}
+
+
+message JobListResponse {
+  repeated JobItem jobs = 1 ;
+}  
+
+// ------------ Queue Service ------------
+
+// Defines methods to interact with `queue`s.
+service GrpcQueueService {
+  // Returns a list of queue names (nats subjects)
+  rpc ListQueues (Empty) returns (QueueListResponse);
+}
+
+message Empty {}
+
+message QueueItem {
+  string queue_name = 2;
+  string status = 3;
+  int32 capacity = 4;
+  int32 used_capacity = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message QueueListResponse {
+  repeated QueueItem queues = 1;
+}
+
+// ----------------------------------------
+// Worker - Scheduler Comms
+// ----------------------------------------
+
+// ------------ Worker Service ------------
+
+// Defines methods to interact with `worker`s.
+service GrpcWorkerService {
+  // Worker sends subscription message.
+  rpc SubscribeWorker (WorkerReadyMessage) returns (SchedulerSignal);
+}
+
+message WorkerReadyMessage {
+  // Auth token should be in gRPC Metadata (headers), not the message body
+}
+
+message SchedulerSignal {
+  string epoch = 1; 
+}

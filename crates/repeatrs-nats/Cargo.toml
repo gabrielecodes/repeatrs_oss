@@ -1,0 +1,19 @@
+[package]
+name = "repeatrs-nats"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-proto = { path = "../repeatrs-proto" }
+repeatrs-domain = { path = "../repeatrs-domain" }
+tokio.workspace = true
+tracing.workspace = true
+async-nats.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+tonic.workspace = true
+async-trait.workspace = true
+config.workspace = true
+uuid.workspace = true
+futures.workspace = true

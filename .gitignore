@@ -1,0 +1,9 @@
+/target
+/db
+.vscode
+*.log
+*.logs
+*.json
+*.sock
+*.db
+config.toml

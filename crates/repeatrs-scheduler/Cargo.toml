@@ -1,0 +1,41 @@
+[package]
+name = "repeatrs-scheduler"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-domain = { path = "../repeatrs-domain" }
+repeatrs-proto = { path = "../repeatrs-proto" }
+repeatrs-transaction = { path = "../repeatrs-transaction" }
+repeatrs-bundles = { path = "../repeatrs-bundles" }
+repeatrs-nats = { path = "../repeatrs-nats" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-journald = "0.3.2"
+tonic.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+config.workspace = true
+async-nats.workspace = true
+async-trait.workspace = true
+uuid.workspace = true
+croner.workspace = true
+thiserror.workspace = true
+prost-types.workspace = true
+bytes = "1.11.1"
+ctrlc = { version = "3.4.4", features = ["termination"] }
+futures = "0.3.31"
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"

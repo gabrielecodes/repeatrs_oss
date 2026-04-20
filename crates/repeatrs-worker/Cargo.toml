@@ -1,0 +1,19 @@
+[package]
+name = "repeatrs-worker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+config.workspace = true
+async-trait.workspace = true
+uuid.workspace = true
+futures-util.workspace = true
+thiserror.workspace = true
+
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]

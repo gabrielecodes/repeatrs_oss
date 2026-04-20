@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+
+  nats:
+    image: nats:latest
+    container_name: nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js"]
+    networks: ["nats"]
+
+  nats-cli:
+    container_name: nats-cli
+    image: natsio/nats-box
+    environment:
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - nats
+    entrypoint: ["sleep", "infinity"]
+    networks: ["nats"]
+
+
+networks:
+  nats:
+    name: nats

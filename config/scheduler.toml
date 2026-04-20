@@ -1,0 +1,8 @@
+log_level = "debug"
+scheduler_grpc_url = "127.0.0.1:50051"
+request_timeout_ms = 5000
+
+[worker]
+timeout = 300
+max_retries = 3
+heartbeat_threshold_seconds = 10

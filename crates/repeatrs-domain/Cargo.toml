@@ -1,0 +1,18 @@
+[package]
+name = "repeatrs-domain"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-proto = { path = "../repeatrs-proto" }
+tokio.workspace = true
+uuid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+croner.workspace = true
+async-nats.workspace = true
+tonic.workspace = true
+prost-types.workspace = true

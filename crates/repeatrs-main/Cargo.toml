@@ -1,0 +1,21 @@
+[package]
+name = "repeatrs-main"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+repeatrs-domain = { path = "../repeatrs-domain" }
+repeatrs-db = { path = "../repeatrs-db" }
+repeatrs-proto = { path = "../repeatrs-proto" }
+repeatrs-scheduler = { path = "../repeatrs-scheduler" }
+repeatrs-nats = { path = "../repeatrs-nats" }
+repeatrs-bundles = { path = "../repeatrs-bundles" }
+repeatrs-transaction = { path = "../repeatrs-transaction" }
+tokio.workspace = true
+tonic.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+async-nats.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true

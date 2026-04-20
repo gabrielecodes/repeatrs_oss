@@ -1,0 +1,8 @@
+address = "nats://0.0.0.0:4222"
+job_queues_subject_prefix = "JOB_QUEUES"
+max_bytes = 1048576
+max_messages = 1000000
+max_consumers = 10
+max_retries = 3
+environment = "DEV"
+duplicate_window_seconds = 120

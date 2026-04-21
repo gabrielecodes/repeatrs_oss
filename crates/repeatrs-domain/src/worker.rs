@@ -27,6 +27,12 @@ impl From<WorkerId> for Uuid {
     }
 }
 
+impl From<&WorkerId> for Uuid {
+    fn from(job_id: &WorkerId) -> Self {
+        job_id.0
+    }
+}
+
 impl FromStr for WorkerId {
     type Err = uuid::Error;
 

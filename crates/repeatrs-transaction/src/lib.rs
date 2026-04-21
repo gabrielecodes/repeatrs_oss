@@ -18,6 +18,24 @@ impl DatabaseContext {
     }
 }
 
+pub trait AsyncFnMut<'a, Arg> {
+    type Fut: Future<Output = Self::Output> + Send + 'a;
+    type Output;
+    fn call(&mut self, arg: &'a mut Arg) -> Self::Fut;
+}
+
+impl<'a, Arg: 'a, F, Fut, Out> AsyncFnMut<'a, Arg> for F
+where
+    F: FnMut(&'a mut Arg) -> Fut,
+    Fut: Future<Output = Out> + Send + 'a,
+{
+    type Fut = Fut;
+    type Output = Out;
+    fn call(&mut self, arg: &'a mut Arg) -> Self::Fut {
+        self(arg)
+    }
+}
+
 #[async_trait::async_trait]
 pub trait DatabaseContextProvider<'tx, E> {
     async fn execute<F, T, Err>(&self, f: F) -> Result<T, Err>
@@ -26,14 +44,14 @@ pub trait DatabaseContextProvider<'tx, E> {
         T: Send,
         Err: Error + From<sqlx::Error> + Send;
 
-    async fn run<Func, Fut, T, Err>(&self, mut f: Func) -> Result<T, Err>
+    async fn run<F, T, Err>(&self, mut f: F) -> Result<T, Err>
     where
-        Func: FnMut(&mut E) -> Fut + Send,
-        Fut: std::future::Future<Output = Result<T, Err>> + Send,
+        F: for<'a> AsyncFnMut<'a, E, Output = Result<T, Err>> + Send,
         T: Send,
         Err: Error + From<sqlx::Error> + Send,
     {
-        self.execute(|tx| Box::pin(f(tx))).await
+        // Now 'f.call(tx)' correctly associates the lifetime of 'tx' with the returned Future
+        self.execute(|tx| Box::pin(f.call(tx))).await
     }
 }
 

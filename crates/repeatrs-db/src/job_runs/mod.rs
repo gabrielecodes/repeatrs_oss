@@ -5,7 +5,10 @@ use queries::*;
 use crate::{DbResult, error::DbError, jobs::DbJobId, queues::DbQueueId, workers::DbWorkerId};
 
 use chrono::{DateTime, Utc};
-use repeatrs_domain::{JobId, JobRun, JobRunId, JobRunInsert, JobRunOperations, JobRunStatus};
+use repeatrs_domain::{
+    ExitStatus, JobId, JobRun, JobRunId, JobRunInsert, JobRunOperations, JobRunStatus, QueueId,
+    WorkerId,
+};
 use sqlx::{Postgres, Transaction};
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
@@ -27,13 +30,38 @@ impl<'e> JobRunOperations<Transaction<'e, Postgres>> for PgJobRunRepository {
         Ok(())
     }
 
-    /// Returns the job run given its id
-    async fn get_job_run_by_job_id(
+    /// Returns all the job runs of a specific job given its id
+    async fn get_job_runs_by_job_id(
         &self,
         tx: &mut Transaction<'e, Postgres>,
         job_id: &JobId,
     ) -> DbResult<Vec<JobRun>> {
-        let db_job_runs = get_job_run_by_job_id(&mut **tx, job_id.into()).await?;
+        let db_job_runs = get_job_runs_by_job_id(&mut **tx, job_id.into()).await?;
+
+        let job_runs: Vec<JobRun> = db_job_runs.into_iter().map(|r| r.into()).collect();
+
+        Ok(job_runs)
+    }
+
+    /// Returns all the job runs of jobs belonging to a specific queue
+    async fn get_job_runs_by_queue_id(
+        &self,
+        tx: &mut Transaction<'e, Postgres>,
+        queue_id: &QueueId,
+    ) -> DbResult<Vec<JobRun>> {
+        let db_job_runs = get_job_runs_by_queue_id(&mut **tx, queue_id.into()).await?;
+
+        let job_runs: Vec<JobRun> = db_job_runs.into_iter().map(|r| r.into()).collect();
+
+        Ok(job_runs)
+    }
+
+    /// Returns the job runs
+    async fn get_latest_job_runs(
+        &self,
+        tx: &mut Transaction<'e, Postgres>,
+    ) -> DbResult<Vec<JobRun>> {
+        let db_job_runs = get_latest_job_runs(&mut **tx).await?;
 
         let job_runs: Vec<JobRun> = db_job_runs.into_iter().map(|r| r.into()).collect();
 
@@ -61,8 +89,32 @@ pub enum DbJobRunStatus {
     Completed,
 }
 
+impl From<DbJobRunStatus> for JobRunStatus {
+    fn from(value: DbJobRunStatus) -> Self {
+        match value {
+            DbJobRunStatus::Queued => JobRunStatus::Queued,
+            DbJobRunStatus::Running => JobRunStatus::Running,
+            DbJobRunStatus::Stopped => JobRunStatus::Stopped,
+            DbJobRunStatus::Failed => JobRunStatus::Failed,
+            DbJobRunStatus::Completed => JobRunStatus::Completed,
+        }
+    }
+}
+
 impl From<JobRunStatus> for DbJobRunStatus {
     fn from(value: JobRunStatus) -> Self {
+        match value {
+            JobRunStatus::Queued => DbJobRunStatus::Queued,
+            JobRunStatus::Running => DbJobRunStatus::Running,
+            JobRunStatus::Stopped => DbJobRunStatus::Stopped,
+            JobRunStatus::Failed => DbJobRunStatus::Failed,
+            JobRunStatus::Completed => DbJobRunStatus::Completed,
+        }
+    }
+}
+
+impl From<&JobRunStatus> for DbJobRunStatus {
+    fn from(value: &JobRunStatus) -> Self {
         match value {
             JobRunStatus::Queued => DbJobRunStatus::Queued,
             JobRunStatus::Running => DbJobRunStatus::Running,
@@ -140,7 +192,7 @@ impl From<DbJobRunId> for JobRunId {
 /// A record of a [`Job`] execution.
 pub struct JobRunRow {
     /// Unique identifier for a job run
-    job_run_id: DbJobRunId,
+    pub job_run_id: DbJobRunId,
 
     /// The job this job run refers to.
     job_id: DbJobId,
@@ -149,7 +201,7 @@ pub struct JobRunRow {
     queue_id: DbQueueId,
 
     /// Identifier of the worker that concluded the execution.
-    worker_id: DbWorkerId,
+    worker_id: Option<DbWorkerId>,
 
     /// Time when a worker claimed this job run
     claimed_at: Option<DateTime<Utc>>,
@@ -167,7 +219,7 @@ pub struct JobRunRow {
     started_at: Option<DateTime<Utc>>,
 
     /// Timestamp representing the end time of this run
-    ended_at: Option<DateTime<Utc>>,    
+    ended_at: Option<DateTime<Utc>>,
 
     /// Container exit code
     exit_code: Option<i32>,
@@ -184,23 +236,49 @@ pub struct JobRunRow {
 
 impl From<JobRun> for JobRunRow {
     fn from(value: JobRun) -> Self {
-
+        let code: Option<i32> = value.exit_code().map(|code| code.into());
+        let worker_id: Option<DbWorkerId> = value.worker_id().map(|id| id.into());
+        let error: Option<String> = value.error().map(|err| err.to_string());
 
         JobRunRow {
             job_run_id: value.job_run_id().into(),
             job_id: value.job_id().into(),
             queue_id: value.queue_id().into(),
-            worker_id: value.worker_id().into(),
+            worker_id: worker_id,
             claimed_at: value.claimed_at(),
             status: value.status().into(),
-            scheduled_time: value.scheduled_time(),
+            scheduled_time: value.scheduled_time().to_owned(),
             attempt_count: value.attempt_count(),
             started_at: value.started_at(),
-            ended_at: value.,
-            exit_code: value.,
-            error: value.,
-            created_at: value.,
-            updated_at: value.,
+            ended_at: value.ended_at(),
+            exit_code: code,
+            error: error,
+            created_at: value.created_at().to_owned(),
+            updated_at: value.updated_at().to_owned(),
         }
+    }
+}
+
+impl From<JobRunRow> for JobRun {
+    fn from(value: JobRunRow) -> Self {
+        let code: Option<ExitStatus> = value.exit_code.map(|code| code.into());
+        let worker_id: Option<WorkerId> = value.worker_id.map(|id| id.into());
+
+        JobRun::from_row(
+            value.job_run_id.into(),
+            value.job_id.into(),
+            value.queue_id.into(),
+            worker_id,
+            value.claimed_at,
+            value.status.into(),
+            value.scheduled_time,
+            value.attempt_count,
+            value.started_at,
+            value.ended_at,
+            code,
+            value.error,
+            value.created_at,
+            value.updated_at,
+        )
     }
 }

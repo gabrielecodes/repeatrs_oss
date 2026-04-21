@@ -6,7 +6,7 @@ use serde::Serialize;
 use std::{fmt::Display, str::FromStr};
 use uuid::Uuid;
 
-use repeatrs_domain::QueueId;
+use repeatrs_domain::{QueueId, WorkerId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(transparent)]
@@ -15,6 +15,24 @@ pub struct DbWorkerId(pub Uuid);
 impl From<Uuid> for DbWorkerId {
     fn from(value: Uuid) -> Self {
         Self(value)
+    }
+}
+
+impl From<DbWorkerId> for WorkerId {
+    fn from(value: DbWorkerId) -> Self {
+        WorkerId::new(value.0)
+    }
+}
+
+impl From<&WorkerId> for DbWorkerId {
+    fn from(value: &WorkerId) -> Self {
+        DbWorkerId(value.inner())
+    }
+}
+
+impl From<WorkerId> for DbWorkerId {
+    fn from(value: WorkerId) -> Self {
+        DbWorkerId(value.inner())
     }
 }
 

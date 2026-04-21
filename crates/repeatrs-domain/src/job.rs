@@ -100,6 +100,48 @@ impl From<JobStatus> for String {
 }
 
 #[derive(Debug)]
+pub struct NewJob {
+    /// Unique job name
+    pub job_name: String,
+
+    /// The job description
+    pub description: Option<String>,
+
+    /// schedule of the cronjob or execution time
+    pub schedule: Cron,
+
+    /// Options for running the container
+    pub options: Option<String>,
+
+    /// Image name as <optional_registry>/<image_name>:tag
+    pub image_name: String,
+
+    /// The command to run the container
+    pub command: Option<String>,
+
+    /// Arguments for the command
+    pub args: Option<String>,
+
+    /// Retry the job if last execution failed
+    pub max_retries: i32,
+
+    /// Current status of the job
+    pub status: JobStatus,
+
+    /// Job priority
+    pub priority: Option<i32>,
+
+    /// Identifier of the queue this job belongs to
+    pub queue_id: QueueId,
+
+    /// Maximum number of identical jobs running concurrently
+    pub max_concurrency: Option<i32>,
+
+    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
+    pub timeout_seconds: Option<i32>,
+}
+
+#[derive(Debug)]
 pub struct Job {
     /// Unique ID of the job, primary key
     pub job_id: JobId,
@@ -152,6 +194,7 @@ pub struct Job {
     pub updated_at: DateTime<Utc>,
 }
 
+// TODO: move to controller layer
 impl Job {
     pub fn to_job_item(&self, queue_name: &str) -> JobItem {
         JobItem {

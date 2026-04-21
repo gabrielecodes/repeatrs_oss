@@ -1,15 +1,11 @@
 use crate::{
     DbResult,
-    error::DbError,
     jobs::{DbJobId, DbJobStatus, JobRow},
     queues::DbQueueId,
 };
-use chrono::Utc;
-use croner::Cron;
+
 use repeatrs_domain::JobDefinition;
 use sqlx::{Executor, Postgres};
-use std::str::FromStr;
-use tokio::time::{Duration, Instant};
 
 pub(crate) async fn add_job<'e, E>(
     exec: E,
@@ -19,8 +15,8 @@ pub(crate) async fn add_job<'e, E>(
 where
     E: Executor<'e, Database = Postgres>,
 {
-    let schedule = Cron::from_str(&job.schedule)?;
-    let next_occurrence = schedule.find_next_occurrence(&Utc::now(), false)?;
+    // let schedule = Cron::from_str(&job.schedule)?;
+    // let next_occurrence = schedule.find_next_occurrence(&Utc::now(), false)?;
 
     let job_id: DbJobId = sqlx::query_scalar!(
         r#"INSERT INTO jobs (
@@ -33,12 +29,11 @@ where
                 args,
                 max_retries,
                 priority,
-                next_occurrence_at,
                 queue_id,
                 max_concurrency,
                 timeout_seconds
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING
                 job_id AS "job_id: DbJobId"
             "#,
@@ -51,7 +46,6 @@ where
         job.args,
         job.max_retries,
         job.priority,
-        next_occurrence,
         queue_id as &DbQueueId,
         job.max_concurrency,
         job.timeout_seconds,
@@ -82,7 +76,6 @@ where
                 j.max_retries,
                 j.status AS "status: DbJobStatus",
                 j.priority,
-                j.next_occurrence_at,
                 j.queue_id as "queue_id: DbQueueId",
                 j.max_concurrency,
                 j.timeout_seconds,
@@ -120,7 +113,6 @@ where
                 j.max_retries,
                 j.status AS "status: DbJobStatus",
                 j.priority,
-                j.next_occurrence_at,
                 j.queue_id as "queue_id: DbQueueId",
                 j.max_concurrency,
                 j.timeout_seconds,
@@ -160,7 +152,6 @@ where
                 j.max_retries,
                 j.status AS "status: DbJobStatus",
                 j.priority,
-                j.next_occurrence_at,
                 j.queue_id as "queue_id: DbQueueId",
                 j.max_concurrency,
                 j.timeout_seconds,
@@ -201,7 +192,6 @@ where
             j.max_retries,
             j.status AS "status: DbJobStatus",
             j.priority,
-            j.next_occurrence_at,
             j.queue_id as "queue_id: DbQueueId",
             j.max_concurrency,
             j.timeout_seconds,
@@ -220,34 +210,34 @@ where
     Ok(jobs)
 }
 
-pub(crate) async fn get_earliest_deadline<'e, E>(exec: E) -> Instant
-where
-    E: Executor<'e, Database = Postgres>,
-{
-    let record: std::result::Result<
-        Option<sqlx::types::chrono::DateTime<Utc>>,
-        sqlx::error::Error,
-    > = sqlx::query_scalar!(
-        r#"
-        SELECT 
-            COALESCE(
-                MIN(next_occurrence_at), 
-                NOW() + INTERVAL '1 minute')::timestamp AT TIME ZONE 'UTC'
-        FROM jobs
-        "#
-    )
-    .fetch_one(exec)
-    .await;
+// pub(crate) async fn get_earliest_deadline<'e, E>(exec: E) -> Instant
+// where
+//     E: Executor<'e, Database = Postgres>,
+// {
+//     let record: std::result::Result<
+//         Option<sqlx::types::chrono::DateTime<Utc>>,
+//         sqlx::error::Error,
+//     > = sqlx::query_scalar!(
+//         r#"
+//         SELECT
+//             COALESCE(
+//                 MIN(next_occurrence_at),
+//                 NOW() + INTERVAL '1 minute')::timestamp AT TIME ZONE 'UTC'
+//         FROM job_schedule_state
+//         "#
+//     )
+//     .fetch_one(exec)
+//     .await;
 
-    match record {
-        Ok(Some(d)) => d
-            .signed_duration_since(Utc::now())
-            .to_std()
-            .map(|d| Instant::now() + d)
-            .unwrap_or(Instant::now() + Duration::from_mins(1)),
-        _ => Instant::now() + Duration::from_mins(1),
-    }
-}
+//     match record {
+//         Ok(Some(d)) => d
+//             .signed_duration_since(Utc::now())
+//             .to_std()
+//             .map(|d| Instant::now() + d)
+//             .unwrap_or(Instant::now() + Duration::from_mins(1)),
+//         _ => Instant::now() + Duration::from_mins(1),
+//     }
+// }
 
 /// Returns active jobs whose time is due.
 pub(crate) async fn get_due_jobs<'e, E>(exec: E) -> DbResult<Vec<JobRow>>
@@ -269,7 +259,6 @@ where
             j.max_retries,
             j.status AS "status: DbJobStatus",
             j.priority,
-            j.next_occurrence_at,
             j.queue_id,
             j.max_concurrency,
             j.timeout_seconds,

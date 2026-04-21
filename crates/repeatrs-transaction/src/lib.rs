@@ -25,6 +25,16 @@ pub trait DatabaseContextProvider<'tx, E> {
         F: for<'a> FnMut(&'a mut E) -> BoxFuture<'a, Result<T, Err>> + Send,
         T: Send,
         Err: Error + From<sqlx::Error> + Send;
+
+    async fn run<Func, Fut, T, Err>(&self, mut f: Func) -> Result<T, Err>
+    where
+        Func: FnMut(&mut E) -> Fut + Send,
+        Fut: std::future::Future<Output = Result<T, Err>> + Send,
+        T: Send,
+        Err: Error + From<sqlx::Error> + Send,
+    {
+        self.execute(|tx| Box::pin(f(tx))).await
+    }
 }
 
 #[async_trait::async_trait]

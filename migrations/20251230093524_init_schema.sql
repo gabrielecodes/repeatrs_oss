@@ -94,10 +94,9 @@ CREATE TABLE
         claimed_at           TIMESTAMPTZ,
         status               job_run_status NOT NULL DEFAULT 'QUEUED',
         scheduled_time       TIMESTAMPTZ NOT NULL,
-        attempt_count        INTEGER NOT NULL DEFAULT 1
+        attempt_count        INTEGER NOT NULL DEFAULT 1,
         started_at           TIMESTAMPTZ,
         ended_at             TIMESTAMPTZ,
-        duration_secs        INTEGER,
         exit_code            INTEGER,
         error                TEXT,
         created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -126,7 +125,7 @@ CREATE TABLE
         job_id               UUID PRIMARY KEY REFERENCES jobs(job_id),
         next_run_at          TIMESTAMPTZ,
         last_scheduled_at    TIMESTAMPTZ
-    )
+    );
 
 ------------------------------------------------
 -- WORKERS

@@ -25,12 +25,14 @@ mod job_queue;
 mod job_runs;
 mod job_schedule_state;
 mod queue;
+mod worker;
 
 pub use job::{Job, JobDefinition, JobId, JobOperations, JobStatus};
 pub use job_queue::{HasSubject, JobQueueOperations};
-pub use job_runs::{JobRunId, JobRunOperations, JobRunStatus};
-pub use job_schedule_state::{JobRunInsert, JobScheduleState, JobScheduleStateOperations};
+pub use job_runs::{JobRun, JobRunId, JobRunInsert, JobRunOperations, JobRunStatus};
+pub use job_schedule_state::{JobScheduleState, JobScheduleStateOperations};
 pub use queue::{Queue, QueueId, QueueOperations, QueueStatus};
+pub use worker::WorkerId;
 
 use uuid::Uuid;
 

@@ -1,4 +1,4 @@
-use crate::{IsId, Job, JobId, QueueId};
+use crate::{IsId, JobId, QueueId, WorkerId};
 
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
@@ -181,22 +181,25 @@ pub struct JobRun {
     queue_id: QueueId,
 
     /// The unique identifier of the worker that claimed this job
-    worker_id: Uuid,
+    worker_id: WorkerId,
+
+    /// Time when a worker claimed this job run
+    claimed_at: Option<DateTime<Utc>>,
 
     /// Current status of the job
     status: JobRunStatus,
 
-    /// Current status of the job
+    /// Scheduled execution time
     scheduled_time: DateTime<Utc>,
+
+    /// Number of times this job has been attempted
+    attempt_count: i32,
 
     /// Job start time
     started_at: DateTime<Utc>,
 
     /// Job end time
     ended_at: DateTime<Utc>,
-
-    /// Job execution duration in seconds
-    duration_secs: Duration,
 
     /// Name of the queue this job belongs to
     exit_code: ExitStatus,
@@ -211,6 +214,71 @@ pub struct JobRun {
     updated_at: DateTime<Utc>,
 }
 
+impl JobRun {
+    pub fn job_run_id(&self) -> &JobRunId {
+        &self.job_run_id
+    }
+
+    pub fn job_id(&self) -> &JobId {
+        &self.job_id
+    }
+
+    pub fn queue_id(&self) -> &QueueId {
+        &self.queue_id
+    }
+
+    pub fn worker_id(&self) -> &WorkerId {
+        &self.worker_id
+    }
+
+    pub fn claimed_at(&self) -> Option<DateTime<Utc>> {
+        self.claimed_at
+    }
+
+    pub fn status(&self) -> &JobRunStatus {
+        &self.status
+    }
+
+    pub fn scheduled_time(&self) -> &DateTime<Utc> {
+        &self.scheduled_time
+    }
+
+    pub fn attempt_count(&self) -> i32 {
+        self.attempt_count
+    }
+
+    pub fn started_at(&self) -> &DateTime<Utc> {
+        &self.started_at
+    }
+
+    pub fn ended_at(&self) -> &DateTime<Utc> {
+        &self.started_at
+    }
+}
+
+/// DTO to insert new job runs in the `job_runs` table
+pub struct JobRunInsert {
+    job_id: JobId,
+    next_run_at: DateTime<Utc>,
+}
+
+impl JobRunInsert {
+    pub fn new(job_id: JobId, next_run_at: DateTime<Utc>) -> Self {
+        Self {
+            job_id,
+            next_run_at,
+        }
+    }
+
+    pub fn job_id(&self) -> JobId {
+        self.job_id
+    }
+
+    pub fn next_run_at(&self) -> DateTime<Utc> {
+        self.next_run_at
+    }
+}
+
 pub trait JobRunOperations<E>: Sync + Send + 'static {
     type Err: std::error::Error;
 
@@ -218,11 +286,11 @@ pub trait JobRunOperations<E>: Sync + Send + 'static {
     fn add_job_runs(
         &self,
         tx: &mut E,
-        job: &Job,
-    ) -> impl std::future::Future<Output = Result<JobRunId, Self::Err>> + Send;
+        job_info: &[JobRunInsert],
+    ) -> impl std::future::Future<Output = Result<(), Self::Err>> + Send;
 
     /// Returns the job run given its id
-    fn get_job_run_by_id(
+    fn get_job_run_by_job_id(
         &self,
         tx: &mut E,
         job_id: &JobId,

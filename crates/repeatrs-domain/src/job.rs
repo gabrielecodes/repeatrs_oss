@@ -285,10 +285,10 @@ pub trait JobOperations<E>: Sync + Send + 'static {
         job_name: &str,
     ) -> impl std::future::Future<Output = Result<JobId, Self::Err>> + Send;
 
-    fn get_earliest_deadline(
-        &self,
-        tx: &mut E,
-    ) -> impl std::future::Future<Output = Result<Instant, Self::Err>> + Send;
+    // fn get_earliest_deadline(
+    //     &self,
+    //     tx: &mut E,
+    // ) -> impl std::future::Future<Output = Result<Instant, Self::Err>> + Send;
 
     fn get_due_jobs(
         &self,

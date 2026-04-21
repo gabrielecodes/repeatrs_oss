@@ -37,7 +37,7 @@ where
 
         let runnable_jobs = self
             .database
-            .execute(|tx| {
+            .run(|tx| async move {
                 let job_repo = job_repo.clone();
 
                 // BEGIN
@@ -47,24 +47,22 @@ where
                 // 4. UPSERT job_schedule_state
                 // COMMIT
 
-                Box::pin(async move {
-                    let runnable_jobs = err_ctx!(job_repo.get_due_jobs(tx).await)?;
+                let runnable_jobs = err_ctx!(job_repo.get_due_jobs(tx).await)?;
 
-                    if !runnable_jobs.is_empty() {
-                        let job_runs_input: Vec<JobRunInsert> = runnable_jobs
-                            .iter()
-                            .map(|j: Job| {
-                                let next_run_at = self.calculate_next_occurrence(j, false);
-                                JobRunInsert::new(j.job_id, next_run_at)
-                            })
-                            .collect();
+                if !runnable_jobs.is_empty() {
+                    let job_runs_input: Vec<JobRunInsert> = runnable_jobs
+                        .iter()
+                        .map(|j: Job| {
+                            let next_run_at = self.calculate_next_occurrence(j, false);
+                            JobRunInsert::new(j.job_id, next_run_at)
+                        })
+                        .collect();
 
-                        // insert new job_run
-                        // upsert new job schedule state
-                    }
+                    // insert new job_run
+                    // upsert new job schedule state
+                }
 
-                    Ok::<Vec<Job>, TransactionError>(runnable_jobs)
-                })
+                Ok::<Vec<Job>, TransactionError>(runnable_jobs)
             })
             .await
             .map_transaction_error(line!(), file!())?;

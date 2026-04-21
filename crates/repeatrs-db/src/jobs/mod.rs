@@ -13,7 +13,6 @@ use croner::Cron;
 use repeatrs_domain::{Job, JobDefinition, JobId, JobOperations, JobStatus, QueueId};
 use sqlx::{Postgres, Transaction, Type};
 use std::str::FromStr;
-use tokio::time::Instant;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -132,9 +131,9 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
         Ok(job_id.into())
     }
 
-    async fn get_earliest_deadline(&self, tx: &mut Transaction<'e, Postgres>) -> DbResult<Instant> {
-        Ok(get_earliest_deadline(&mut **tx).await)
-    }
+    // async fn get_earliest_deadline(&self, tx: &mut Transaction<'e, Postgres>) -> DbResult<Instant> {
+    //     Ok(get_earliest_deadline(&mut **tx).await)
+    // }
 
     async fn get_due_jobs(&self, tx: &mut Transaction<'e, Postgres>) -> DbResult<Vec<Job>> {
         let jobs = get_due_jobs(&mut **tx).await?;
@@ -164,6 +163,12 @@ pub struct DbJobId(Uuid);
 impl From<DbJobId> for JobId {
     fn from(value: DbJobId) -> Self {
         JobId::new(value.0)
+    }
+}
+
+impl From<JobId> for DbJobId {
+    fn from(value: JobId) -> Self {
+        DbJobId(value.inner())
     }
 }
 

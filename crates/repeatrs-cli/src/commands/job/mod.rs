@@ -77,8 +77,11 @@ pub struct AddJobArgs {
     args: Option<Vec<String>>,
 
     /// Retry on failure
-    #[arg(long, help = "retry on failure (true/false)")]
-    no_retry: Option<bool>,
+    #[arg(
+        long,
+        help = "maximum number of retries before the job is considered failed"
+    )]
+    max_retries: Option<i32>,
 
     #[arg(short, long, help = "job priority")]
     priority: Option<i32>,
@@ -154,12 +157,12 @@ impl TryFrom<AddJobArgs> for AddJobRequest {
             schedule,
             image_name,
             queue_name,
-            no_retry: value.no_retry.unwrap_or(false),
             options: value.options,
             command: value.command,
             args: value.args.unwrap_or_default(),
             priority: value.priority.unwrap_or(1),
-            max_concurrency: value.max_concurrency.unwrap_or(100),
+            max_retries: value.max_retries.unwrap_or(0),
+            max_concurrency: value.max_concurrency.unwrap_or(0),
             timeout_seconds: value.timeout_seconds.unwrap_or(7200),
         };
 
@@ -176,7 +179,7 @@ impl AddJobArgs {
             schedule: self.schedule.to_owned(),
             image_name: self.image_name.to_owned(),
             queue_name: self.queue_name.to_owned(),
-            no_retry: Some(false),
+            max_retries: self.max_retries.to_owned(),
             options: self.options.to_owned(),
             command: self.command.to_owned(),
             args: None,
@@ -241,7 +244,7 @@ impl AddJobArgs {
             max_concurrency,
             timeout_seconds,
             priority: self.priority.or(parsed.priority).unwrap_or(1),
-            no_retry: self.no_retry.or(parsed.no_retry).unwrap_or(false),
+            max_retries: self.max_retries.or(parsed.max_retries).unwrap_or(0),
             options: self.options.or(parsed.options),
             command: self.command.or(parsed.command),
             args: self.args.or(parsed.args).unwrap_or_default(),
@@ -319,24 +322,23 @@ struct JobDisplay {
     #[tabled(rename = "PRIORITY")]
     pub priority: i32,
 
-    #[tabled(rename = "RETRY")]
-    pub no_retry: bool,
-
-    #[tabled(rename = "NEXT OCCURRENCE")]
-    next_occurrence_at: String,
+    #[tabled(rename = "RETRIES")]
+    pub max_retries: i32,
+    // #[tabled(rename = "NEXT OCCURRENCE")]
+    // next_occurrence_at: String,
 }
 
 impl From<JobItem> for JobDisplay {
     fn from(value: JobItem) -> Self {
-        let deadline = value
-            .next_occurrence_at
-            .as_ref()
-            .map(|ts| {
-                chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_else(|| "Invalid Date".to_string())
-            })
-            .unwrap_or_else(|| "N/A".to_string());
+        // let deadline = value
+        //     .next_occurrence_at
+        //     .as_ref()
+        //     .map(|ts| {
+        //         chrono::DateTime::from_timestamp(ts.seconds, ts.nanos as u32)
+        //             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        //             .unwrap_or_else(|| "Invalid Date".to_string())
+        //     })
+        //     .unwrap_or_else(|| "N/A".to_string());
 
         Self {
             job_id: value.job_id,
@@ -345,8 +347,8 @@ impl From<JobItem> for JobDisplay {
             image_name: value.image_name,
             queue_name: value.queue_name,
             priority: value.priority,
-            no_retry: value.no_retry,
-            next_occurrence_at: deadline,
+            max_retries: value.max_retries,
+            // next_occurrence_at: deadline,
         }
     }
 }

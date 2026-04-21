@@ -32,21 +32,6 @@ impl JobScheduleState {
     }
 }
 
-/// DTO to insert new job runs in the `job_runs` table
-pub struct JobRunInsert {
-    job_id: JobId,
-    next_run_at: DateTime<Utc>,
-}
-
-impl JobRunInsert {
-    pub fn new(job_id: JobId, next_run_at: DateTime<Utc>) -> Self {
-        Self {
-            job_id,
-            next_run_at,
-        }
-    }
-}
-
 pub trait JobScheduleStateOperations<E>: Sync + Send + 'static {
     type Err: std::error::Error;
 

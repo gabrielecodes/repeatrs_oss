@@ -2,10 +2,10 @@ mod queries;
 
 use queries::*;
 
-use crate::{DbResult, error::DbError, workers::DbWorkerId};
+use crate::{DbResult, error::DbError, jobs::DbJobId, queues::DbQueueId, workers::DbWorkerId};
 
 use chrono::{DateTime, Utc};
-use repeatrs_domain::{Job, JobRunId, JobRunOperations, JobRunStatus};
+use repeatrs_domain::{JobId, JobRun, JobRunId, JobRunInsert, JobRunOperations, JobRunStatus};
 use sqlx::{Postgres, Transaction};
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
@@ -20,9 +20,24 @@ impl<'e> JobRunOperations<Transaction<'e, Postgres>> for PgJobRunRepository {
     async fn add_job_runs(
         &self,
         tx: &mut Transaction<'e, Postgres>,
-        job: &Job,
-    ) -> DbResult<JobRunId> {
-        Ok(job_id.into())
+        job_info: &[JobRunInsert],
+    ) -> DbResult<()> {
+        let _ = insert_job_runs(&mut **tx, job_info).await?;
+
+        Ok(())
+    }
+
+    /// Returns the job run given its id
+    async fn get_job_run_by_job_id(
+        &self,
+        tx: &mut Transaction<'e, Postgres>,
+        job_id: &JobId,
+    ) -> DbResult<Vec<JobRun>> {
+        let db_job_runs = get_job_run_by_job_id(&mut **tx, job_id.into()).await?;
+
+        let job_runs: Vec<JobRun> = db_job_runs.into_iter().map(|r| r.into()).collect();
+
+        Ok(job_runs)
     }
 }
 
@@ -104,33 +119,55 @@ impl From<Uuid> for DbJobRunId {
     }
 }
 
+impl From<JobRunId> for DbJobRunId {
+    fn from(value: JobRunId) -> Self {
+        DbJobRunId(value.inner())
+    }
+}
+
+impl From<&JobRunId> for DbJobRunId {
+    fn from(value: &JobRunId) -> Self {
+        DbJobRunId(value.inner())
+    }
+}
+
+impl From<DbJobRunId> for JobRunId {
+    fn from(value: DbJobRunId) -> Self {
+        JobRunId::new(value.0)
+    }
+}
+
 /// A record of a [`Job`] execution.
-#[derive(sqlx::FromRow, sqlx::Type)]
-#[sqlx(type_name = "job_runs")]
-pub struct JobRun {
+pub struct JobRunRow {
     /// Unique identifier for a job run
     job_run_id: DbJobRunId,
 
     /// The job this job run refers to.
-    job_id: Uuid,
+    job_id: DbJobId,
+
+    /// The job this job run refers to.
+    queue_id: DbQueueId,
 
     /// Identifier of the worker that concluded the execution.
     worker_id: DbWorkerId,
 
-    /// Identifier of the container spawned to execute this job.
-    container_name: String,
+    /// Time when a worker claimed this job run
+    claimed_at: Option<DateTime<Utc>>,
 
     /// Current status of the container.
     status: DbJobRunStatus,
+
+    /// Scheduled execution time
+    scheduled_time: DateTime<Utc>,
+
+    /// Number of times this job has been attempted
+    attempt_count: i32,
 
     /// Timestamp representing the start time of this run
     started_at: Option<DateTime<Utc>>,
 
     /// Timestamp representing the end time of this run
-    ended_at: Option<DateTime<Utc>>,
-
-    /// Duration in seconds for this job run
-    duration_secs: Option<i32>,
+    ended_at: Option<DateTime<Utc>>,    
 
     /// Container exit code
     exit_code: Option<i32>,
@@ -138,16 +175,32 @@ pub struct JobRun {
     /// Error message
     error: Option<String>,
 
+    /// Job creation timestamp
     created_at: DateTime<Utc>,
+
+    /// Time this job run was last updated
     updated_at: DateTime<Utc>,
 }
 
-impl JobRun {
-    pub fn job_run_id(&self) -> JobRunId {
-        self.job_run_id.into()
-    }
+impl From<JobRun> for JobRunRow {
+    fn from(value: JobRun) -> Self {
 
-    // pub fn container_id(&self) -> String {
-    //     self.container_id.to_owned()
-    // }
+
+        JobRunRow {
+            job_run_id: value.job_run_id().into(),
+            job_id: value.job_id().into(),
+            queue_id: value.queue_id().into(),
+            worker_id: value.worker_id().into(),
+            claimed_at: value.claimed_at(),
+            status: value.status().into(),
+            scheduled_time: value.scheduled_time(),
+            attempt_count: value.attempt_count(),
+            started_at: value.started_at(),
+            ended_at: value.,
+            exit_code: value.,
+            error: value.,
+            created_at: value.,
+            updated_at: value.,
+        }
+    }
 }

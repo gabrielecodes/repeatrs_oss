@@ -54,7 +54,7 @@ pub async fn parse_command(cli: Cli, config: Config) -> Result<()> {
     let channel = get_grpc_channel(&config).await?;
 
     match cli.command {
-        Commands::Job { command } => JobService::with_channel(channel).execute(*command).await?,
+        Commands::Job { command } => JobService::with_channel(channel).execute(command).await?,
         Commands::Queue { command } => {
             QueueService::with_channel(channel)
                 .handle_command(command)

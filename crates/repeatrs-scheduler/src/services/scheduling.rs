@@ -1,9 +1,8 @@
 use crate::error::ToServiceError;
 use crate::{ServiceResult, err_ctx};
-use chrono::{DateTime, Utc};
-use repeatrs_bundles::JobQueueBundle;
+use repeatrs_bundles::JobSchedulerBundle;
 use repeatrs_domain::{
-    Job, JobOperations, JobQueueOperations, JobRunInsert, JobScheduleState, NewJobRun,
+    JobOperations, JobRunOperations, JobScheduleStateOperations, NewJobRun, NewJobScheduleState,
 };
 use repeatrs_transaction::{DatabaseContextProvider, TransactionError};
 use std::marker::PhantomData;
@@ -11,7 +10,7 @@ use tracing::{info, instrument};
 
 pub struct SchedulingService<E, B, D>
 where
-    B: JobQueueBundle<E>,
+    B: JobSchedulerBundle<E>,
     D: for<'tx> DatabaseContextProvider<'tx, E>,
 {
     bundle: B,
@@ -21,7 +20,7 @@ where
 
 impl<E, B, D> SchedulingService<E, B, D>
 where
-    B: JobQueueBundle<E> + Send + Sync + 'static,
+    B: JobSchedulerBundle<E> + Send + Sync + 'static,
     D: for<'tx> DatabaseContextProvider<'tx, E> + Send + Sync + 'static,
     E: Send + Sync + 'static,
 {
@@ -35,38 +34,46 @@ where
 
     #[instrument(skip_all)]
     pub async fn dispatch_due_jobs(&self) -> ServiceResult<()> {
-        let job_queue_repo = self.bundle.job_queue_repo();
         let job_repo = self.bundle.job_repo();
+        let job_runs_repo = self.bundle.job_runs_repo();
+        let job_schedule_state_repo = self.bundle.job_schedule_state_repo();
 
         let runnable_jobs = self
             .database
             .execute(|tx| {
                 let job_repo = job_repo.clone();
+                let job_runs_repo = job_runs_repo.clone();
+                let job_schedule_state_repo = job_schedule_state_repo.clone();
 
                 Box::pin(async move {
-                    // BEGIN
-                    // 1. SELECT due job_schedule_state FOR UPDATE SKIP LOCKED
-                    // 2. compute next_run_at
-                    // 3. INSERT job_runs (idempotent)
-                    // 4. UPSERT job_schedule_state
-                    // COMMIT
+                    let jobs = err_ctx!(job_repo.get_due_jobs(tx).await)?;
 
-                    let runnable_jobs = err_ctx!(job_repo.get_due_jobs(tx).await)?;
-
-                    if !runnable_jobs.is_empty() {
-                        let job_runs_input: Vec<JobRunInsert> = runnable_jobs
-                            .iter()
-                            .map(|job: Job| {
-                                let next_run_at = job.calculate_next_occurrence(j, false);
-                                NewJobRun::new(job.job_id(), queue_id, scheduled_time)
-                            })
-                            .collect();
-
-                        // insert new job_run
-                        // upsert new job schedule state
+                    if jobs.is_empty() {
+                        return Ok(Vec::new());
                     }
 
-                    Ok::<Vec<Job>, TransactionError>(runnable_jobs)
+                    let job_runs_input: Vec<NewJobRun> = jobs
+                    .iter()
+                    .filter_map(|job| {
+                        match job.calculate_next_occurrence(false) {
+                            Ok(next) => Some(NewJobRun::new(job.job_id(), job.queue_id(), &next)),
+                            Err(e) => {
+                                tracing::error!(job_id = %job.job_id(), error = %e, "Failed to calculate next run");
+                                None
+                            }
+                        }
+                    })
+                    .collect();
+
+                    if !job_runs_input.is_empty() {
+                        err_ctx!(job_runs_repo.insert_job_runs(tx, &job_runs_input).await)?;
+
+                        let v: Vec<NewJobScheduleState> = job_runs_input.iter().map(|job_run| NewJobScheduleState::new(job_run.job_id(), job_run.scheduled_time())).collect();
+
+                        err_ctx!(job_schedule_state_repo.upsert_jobs_schedule(tx, &v).await)?;
+                    }
+
+                    Ok::<Vec<NewJobRun>, TransactionError>(job_runs_input)
                 })
             })
             .await

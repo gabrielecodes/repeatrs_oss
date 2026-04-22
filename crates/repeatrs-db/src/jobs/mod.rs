@@ -261,7 +261,7 @@ struct JobRow {
     max_concurrency: i32,
 
     /// A hard limit on the duration of the job, after which the job is terminated.
-    timeout_seconds: Option<i64>,
+    timeout_seconds: Option<i32>,
 
     /// Job creation timestamp
     created_at: DateTime<Utc>,
@@ -284,7 +284,10 @@ impl TryFrom<JobRow> for Job {
 
     fn try_from(value: JobRow) -> Result<Self, Self::Error> {
         let schedule = Cron::from_str(&value.schedule)?;
-        let timeout_seconds = value.timeout_seconds.map(|t| chrono::Duration::seconds(t));
+
+        let timeout_seconds = value
+            .timeout_seconds
+            .map(|t| chrono::Duration::seconds(t as i64));
 
         let job = Job::from_row(
             JobId::new(value.job_id().0),
@@ -310,23 +313,25 @@ impl TryFrom<JobRow> for Job {
     }
 }
 
-impl From<Job> for JobRow {
-    fn from(value: Job) -> JobRow {
+impl From<&Job> for JobRow {
+    fn from(value: &Job) -> Self {
         JobRow {
             job_id: DbJobId(value.job_id().inner()),
             job_name: value.job_name().to_owned(),
-            description: value.description().map(|s| s.to_string()),
+            description: value.description().map(ToString::to_string),
             schedule: value.schedule().to_string(),
-            options: value.options().map(|s| s.to_string()),
+            options: value.options().map(ToString::to_string),
             image_name: value.image_name().to_owned(),
-            command: value.command().map(|s| s.to_string()),
-            args: value.args().map(|s| s.to_string()),
+            command: value.command().map(ToString::to_string),
+            args: value.args().map(ToString::to_string),
             max_retries: value.max_retries(),
             status: value.status().into(),
             priority: value.priority(),
             queue_id: value.queue_id().into(),
             max_concurrency: value.max_concurrency(),
-            timeout_seconds: value.timeout_seconds().map(|d| d.num_seconds()),
+            timeout_seconds: value
+                .timeout_seconds()
+                .map(|d| d.num_seconds().clamp(i32::MIN as i64, i32::MAX as i64) as i32),
             created_at: value.created_at(),
             updated_at: value.updated_at(),
             queue_name: value.queue_name().to_string(),
@@ -334,26 +339,8 @@ impl From<Job> for JobRow {
     }
 }
 
-impl From<&Job> for JobRow {
-    fn from(value: &Job) -> JobRow {
-        JobRow {
-            job_id: DbJobId(value.job_id().inner()),
-            job_name: value.job_name().to_owned(),
-            description: value.description().map(|s| s.to_string()),
-            schedule: value.schedule().to_string(),
-            options: value.options().map(|s| s.to_string()),
-            image_name: value.image_name().to_owned(),
-            command: value.command().map(|s| s.to_string()),
-            args: value.args().map(|s| s.to_string()),
-            max_retries: value.max_retries(),
-            status: value.status().into(),
-            priority: value.priority(),
-            queue_id: value.queue_id().into(),
-            max_concurrency: value.max_concurrency(),
-            timeout_seconds: value.timeout_seconds().map(|d| d.num_seconds()),
-            created_at: value.created_at(),
-            updated_at: value.updated_at(),
-            queue_name: value.queue_name().to_string(),
-        }
+impl From<Job> for JobRow {
+    fn from(value: Job) -> JobRow {
+        JobRow::from(&value)
     }
 }

@@ -15,10 +15,12 @@
 // at the service layer inside the transaction closure. The service uses the repositories
 // in the  bundle to perform cross repository operations.
 
-use async_nats::jetstream::Context;
-use repeatrs_db::{PgJobRepository, PgQueueRepository};
-use repeatrs_domain::{JobOperations, JobQueueOperations, QueueOperations};
-use repeatrs_nats::NatsJobQueueRepository;
+use repeatrs_db::{
+    PgJobRepository, PgJobRunRepository, PgJobScheduleStateRepository, PgQueueRepository,
+};
+use repeatrs_domain::{
+    JobOperations, JobRunOperations, JobScheduleStateOperations, QueueOperations,
+};
 
 // -------- Job Service Bundle --------
 pub trait JobBundle<E> {
@@ -73,36 +75,34 @@ where
 }
 
 // -------- Scheduler Service Bundle --------
-pub trait JobQueueBundle<E> {
+pub trait JobSchedulerBundle<E> {
     fn job_repo(&self) -> impl JobOperations<E> + Clone;
-    fn job_queue_repo(&self) -> impl JobQueueOperations + Clone;
+    fn job_runs_repo(&self) -> impl JobRunOperations<E> + Clone;
+    fn job_schedule_state_repo(&self) -> impl JobScheduleStateOperations<E> + Clone;
 }
 
-pub struct NatsJobQueueBundle<'a> {
-    context: Context,
-    environment: &'a str,
-    prefix: &'a str,
-}
+pub struct PgJobSchedulerBundle;
 
-impl<'a> NatsJobQueueBundle<'a> {
-    pub fn new(context: Context, environment: &'a str, prefix: &'a str) -> Self {
-        Self {
-            context,
-            environment,
-            prefix,
-        }
+impl PgJobSchedulerBundle {
+    pub fn new() -> Self {
+        Self
     }
 }
 
-impl<'a, E> JobQueueBundle<E> for NatsJobQueueBundle<'a>
+impl<E> JobSchedulerBundle<E> for PgJobSchedulerBundle
 where
-    PgJobRepository: JobOperations<E>,
+    PgJobRepository: JobOperations<E> + Clone,
+    PgJobRunRepository: JobRunOperations<E> + Clone,
+    PgJobScheduleStateRepository: JobScheduleStateOperations<E> + Clone,
 {
     fn job_repo(&self) -> impl JobOperations<E> + Clone {
         PgJobRepository
     }
 
-    fn job_queue_repo(&self) -> impl JobQueueOperations + Clone {
-        NatsJobQueueRepository::new(self.context.clone(), self.environment, self.prefix)
+    fn job_runs_repo(&self) -> impl JobRunOperations<E> + Clone {
+        PgJobRunRepository
+    }
+    fn job_schedule_state_repo(&self) -> impl JobScheduleStateOperations<E> + Clone {
+        PgJobScheduleStateRepository
     }
 }

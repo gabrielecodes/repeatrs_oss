@@ -1,7 +1,7 @@
 use crate::{DbResult, job_schedule_state::DbJobScheduleState};
 
 use chrono::{DateTime, Utc};
-use sqlx::{Executor, Postgres};
+use sqlx::Postgres;
 use uuid::Uuid;
 
 pub(crate) async fn upsert_jobs_schedule<'e, E>(
@@ -15,8 +15,8 @@ where
         return Ok(());
     }
 
-    let job_ids: Vec<Uuid> = jobs_schedules.iter().map(|j| j.job_id).collect();
-    let next_times: Vec<DateTime<Utc>> = jobs_schedules.iter().map(|j| j.next_run_at).collect();
+    let job_ids: Vec<Uuid> = jobs_schedules.iter().map(|j| j.job_id_inner()).collect();
+    let next_times: Vec<DateTime<Utc>> = jobs_schedules.iter().map(|j| j.next_run_at()).collect();
 
     sqlx::query!(
         r#"

@@ -21,7 +21,7 @@ TODO:
 use crate::ServiceResult;
 use crate::services::scheduling::SchedulingService;
 
-use repeatrs_bundles::JobQueueBundle;
+use repeatrs_bundles::JobSchedulerBundle;
 use repeatrs_transaction::DatabaseContextProvider;
 use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::{Notify, watch};
@@ -29,7 +29,7 @@ use tracing::{error, info};
 
 pub struct Scheduler<E, S, D>
 where
-    S: JobQueueBundle<E>,
+    S: JobSchedulerBundle<E>,
     D: for<'tx> DatabaseContextProvider<'tx, E>,
 {
     /// Handle to the job scheduling service.
@@ -46,7 +46,7 @@ where
 
 impl<E, S, D> Scheduler<E, S, D>
 where
-    S: JobQueueBundle<E> + Send + Sync + 'static,
+    S: JobSchedulerBundle<E> + Send + Sync + 'static,
     D: for<'tx> DatabaseContextProvider<'tx, E> + Send + Sync + 'static,
     E: Sync + Send + 'static,
 {

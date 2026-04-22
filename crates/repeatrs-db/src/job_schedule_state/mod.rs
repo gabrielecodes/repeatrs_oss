@@ -5,21 +5,21 @@ use queries::*;
 use crate::{DbResult, error::DbError};
 
 use chrono::{DateTime, Utc};
-use repeatrs_domain::{JobScheduleState, JobScheduleStateOperations};
+use repeatrs_domain::{JobScheduleState, JobScheduleStateOperations, NewJobScheduleState};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub struct PgJobSchedulerStateRepository;
+pub struct PgJobScheduleStateRepository;
 
-impl<'e> JobScheduleStateOperations<Transaction<'e, Postgres>> for PgJobSchedulerStateRepository {
+impl<'e> JobScheduleStateOperations<Transaction<'e, Postgres>> for PgJobScheduleStateRepository {
     type Err = DbError;
 
     /// Insert multiple job schedules
     async fn upsert_jobs_schedule(
         &self,
         tx: &mut Transaction<'e, Postgres>,
-        job_schedules: &[JobScheduleState],
+        job_schedules: &[NewJobScheduleState],
     ) -> DbResult<()> {
         let db_job_schedules: Vec<DbJobScheduleState> =
             job_schedules.into_iter().map(|s| s.into()).collect();
@@ -33,16 +33,30 @@ impl<'e> JobScheduleStateOperations<Transaction<'e, Postgres>> for PgJobSchedule
 pub struct DbJobScheduleState {
     job_id: Uuid,
     next_run_at: DateTime<Utc>,
-    last_scheduled_at: Option<DateTime<Utc>>,
 }
 
-impl From<JobScheduleState> for DbJobScheduleState {
-    fn from(value: JobScheduleState) -> Self {
+impl DbJobScheduleState {
+    pub fn job_id_inner(&self) -> Uuid {
+        self.job_id
+    }
+
+    pub fn next_run_at(&self) -> DateTime<Utc> {
+        self.next_run_at
+    }
+}
+
+impl From<&NewJobScheduleState> for DbJobScheduleState {
+    fn from(value: &NewJobScheduleState) -> Self {
         DbJobScheduleState {
             job_id: value.job_id_inner(),
             next_run_at: value.next_run_at().clone(),
-            last_scheduled_at: value.last_scheduled_at().clone(),
         }
+    }
+}
+
+impl From<NewJobScheduleState> for DbJobScheduleState {
+    fn from(value: NewJobScheduleState) -> Self {
+        DbJobScheduleState::from(&value)
     }
 }
 
@@ -51,7 +65,12 @@ impl From<&JobScheduleState> for DbJobScheduleState {
         DbJobScheduleState {
             job_id: value.job_id_inner(),
             next_run_at: value.next_run_at().clone(),
-            last_scheduled_at: value.last_scheduled_at().clone(),
         }
+    }
+}
+
+impl From<JobScheduleState> for DbJobScheduleState {
+    fn from(value: JobScheduleState) -> Self {
+        DbJobScheduleState::from(&value)
     }
 }

@@ -6,6 +6,8 @@ mod jobs;
 mod queues;
 mod workers;
 
+pub use job_runs::PgJobRunRepository;
+pub use job_schedule_state::PgJobScheduleStateRepository;
 pub use jobs::PgJobRepository;
 pub use queues::PgQueueRepository;
 

@@ -56,20 +56,23 @@ impl JobRunId {
 /// Describes the status of the job.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Serialize)]
 pub enum JobRunStatus {
-    /// Job is waiting to be executed
+    /// The job is queued and waiting capacity
     #[default]
     Queued,
 
-    /// Job is running
+    /// The job is currently being executed
     Running,
 
-    /// Job has been stopped
+    /// The job was stopped with SIGTERM/SIGKILL
     Stopped,
 
-    /// Job has failed
+    /// The job exited with a non-zero exit status
     Failed,
 
-    /// Job has completed successfully
+    /// The job run is not executed
+    Skipped,
+
+    /// The job exited with a zero exit status
     Completed,
 }
 
@@ -80,6 +83,7 @@ impl Display for JobRunStatus {
             Self::Running => "RUNNING",
             Self::Stopped => "STOPPED",
             Self::Failed => "FAILED",
+            Self::Skipped => "SKIPPED",
             Self::Completed => "COMPLETED",
         };
         f.write_str(s)
@@ -95,6 +99,7 @@ impl FromStr for JobRunStatus {
             "RUNNING" => Ok(Self::Running),
             "STOPPED" => Ok(Self::Stopped),
             "FAILED" => Ok(Self::Failed),
+            "SKIPPED" => Ok(Self::Skipped),
             "COMPLETED" => Ok(Self::Completed),
             _ => Err("Job status not understood.".into()),
         }
@@ -108,6 +113,7 @@ impl From<JobRunStatus> for String {
             JobRunStatus::Running => "RUNNING".to_string(),
             JobRunStatus::Stopped => "STOPPED".to_string(),
             JobRunStatus::Failed => "FAILED".to_string(),
+            JobRunStatus::Skipped => "SKIPPED".to_string(),
             JobRunStatus::Completed => "COMPLETED".to_string(),
         }
     }
@@ -353,7 +359,7 @@ pub trait JobRunOperations<E>: Sync + Send + 'static {
     type Err: std::error::Error;
 
     /// Inserts multiple job runs
-    fn add_job_runs(
+    fn insert_job_runs(
         &self,
         tx: &mut E,
         job_run_info: &[NewJobRun],

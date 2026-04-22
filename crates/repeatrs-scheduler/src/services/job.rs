@@ -87,7 +87,7 @@ where
         let job_repo = self.bundle.job_repo();
         let queue_repo = self.bundle.queue_repo();
 
-        let jobs = self
+        let result = self
             .database
             .execute(move |tx| {
                 let job_repo = job_repo.clone();
@@ -103,10 +103,10 @@ where
             })
             .await;
 
-        let (jobs, queue_name) = err_ctx!(jobs)?;
+        let (jobs, queue_name) = err_ctx!(result)?;
         let job_items: Vec<JobItem> = jobs.iter().map(|j| j.to_job_item(&queue_name)).collect();
 
-        Ok(err_ctx!(jobs)?)
+        Ok(job_items)
     }
 
     /// Returns a list of jobs that belong to the queue corresponding to the input `queue_name`.

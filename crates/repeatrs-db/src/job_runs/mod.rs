@@ -20,7 +20,7 @@ impl<'e> JobRunOperations<Transaction<'e, Postgres>> for PgJobRunRepository {
     type Err = DbError;
 
     /// Inserts multiple job runs
-    async fn add_job_runs(
+    async fn insert_job_runs(
         &self,
         tx: &mut Transaction<'e, Postgres>,
         job_run_info: &[NewJobRun],
@@ -85,6 +85,9 @@ pub enum DbJobRunStatus {
     /// The job exited with a non-zero exit status
     Failed,
 
+    /// The job run is not executed
+    Skipped,
+
     /// The job exited with a zero exit status
     Completed,
 }
@@ -96,6 +99,7 @@ impl From<DbJobRunStatus> for JobRunStatus {
             DbJobRunStatus::Running => JobRunStatus::Running,
             DbJobRunStatus::Stopped => JobRunStatus::Stopped,
             DbJobRunStatus::Failed => JobRunStatus::Failed,
+            DbJobRunStatus::Skipped => JobRunStatus::Skipped,
             DbJobRunStatus::Completed => JobRunStatus::Completed,
         }
     }
@@ -108,6 +112,7 @@ impl From<JobRunStatus> for DbJobRunStatus {
             JobRunStatus::Running => DbJobRunStatus::Running,
             JobRunStatus::Stopped => DbJobRunStatus::Stopped,
             JobRunStatus::Failed => DbJobRunStatus::Failed,
+            JobRunStatus::Skipped => DbJobRunStatus::Skipped,
             JobRunStatus::Completed => DbJobRunStatus::Completed,
         }
     }
@@ -120,6 +125,7 @@ impl From<&JobRunStatus> for DbJobRunStatus {
             JobRunStatus::Running => DbJobRunStatus::Running,
             JobRunStatus::Stopped => DbJobRunStatus::Stopped,
             JobRunStatus::Failed => DbJobRunStatus::Failed,
+            JobRunStatus::Skipped => DbJobRunStatus::Skipped,
             JobRunStatus::Completed => DbJobRunStatus::Completed,
         }
     }
@@ -132,6 +138,7 @@ impl Display for DbJobRunStatus {
             Self::Running => "RUNING",
             Self::Stopped => "STOPPED",
             Self::Failed => "FAILED",
+            Self::Skipped => "SKIPPED",
             Self::Completed => "COMPLETED",
         };
         write!(f, "{}", s)

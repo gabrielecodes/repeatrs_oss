@@ -331,12 +331,13 @@ impl Job {
 
     /// Returns the next occurrence of the job.
     pub fn calculate_next_occurrence(
-        job: &Job,
+        &self,
         inclusive_now: bool,
     ) -> Result<DateTime<Utc>, croner::errors::CronError> {
-        let deadline = job
+        let deadline = self
             .schedule
             .find_next_occurrence(&Utc::now(), inclusive_now)?;
+
         Ok(deadline)
     }
 }

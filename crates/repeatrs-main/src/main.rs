@@ -2,9 +2,7 @@ mod error;
 
 use core::net::SocketAddr;
 use error::AppError;
-use repeatrs_bundles::{NatsJobQueueBundle, PgJobBundle, PgQueueBundle};
-use repeatrs_db::{PgJobRepository, PgQueueRepository};
-use repeatrs_nats::JetstreamContextBuilder;
+use repeatrs_bundles::{PgJobBundle, PgJobSchedulerBundle, PgQueueBundle};
 use repeatrs_proto::repeatrs::grpc_job_service_server::GrpcJobServiceServer;
 use repeatrs_proto::repeatrs::grpc_queue_service_server::GrpcQueueServiceServer;
 use repeatrs_scheduler::{
@@ -31,26 +29,16 @@ async fn main() -> Result<(), AppError> {
 
     let database_context = DatabaseContext::new(pool.clone());
 
-    let job_repository = PgJobRepository;
     let job_bundle = PgJobBundle;
     let job_service = JobService::new(job_bundle, database_context.clone());
     let job_controller = JobController::new(job_service, wakeup.clone());
 
-    let queue_repository = PgQueueRepository;
     let queue_bundle = PgQueueBundle;
     let queue_service = QueueService::new(queue_bundle, database_context.clone());
     let queue_controller = QueueController::new(queue_service);
 
-    let nats_context = JetstreamContextBuilder::with_config(nats_config)?
-        .build()
-        .await?;
-    let job_queue_bundle = NatsJobQueueBundle::new(
-        nats_context,
-        nats_config.environment(),
-        nats_config.job_queues_prefix(),
-    );
-    let scheduling_agent = SchedulingService::new(job_queue_bundle, database_context.clone());
-
+    let job_runs_bundle = PgJobSchedulerBundle;
+    let scheduling_agent = SchedulingService::new(job_runs_bundle, database_context.clone());
     let scheduler = Scheduler::new(scheduling_agent, wakeup.clone(), shutdown_rx.clone());
 
     let scheduler_handle = tokio::spawn(async move {

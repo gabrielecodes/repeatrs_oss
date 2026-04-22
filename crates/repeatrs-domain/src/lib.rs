@@ -30,7 +30,7 @@ mod worker;
 pub use job::{Job, JobDefinition, JobId, JobOperations, JobStatus};
 pub use job_queue::{HasSubject, JobQueueOperations};
 pub use job_runs::{ExitStatus, JobRun, JobRunId, JobRunOperations, JobRunStatus, NewJobRun};
-pub use job_schedule_state::{JobScheduleState, JobScheduleStateOperations};
+pub use job_schedule_state::{JobScheduleState, JobScheduleStateOperations, NewJobScheduleState};
 pub use queue::{Queue, QueueId, QueueOperations, QueueStatus};
 pub use worker::WorkerId;
 

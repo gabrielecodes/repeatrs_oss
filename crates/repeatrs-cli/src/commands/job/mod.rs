@@ -1,7 +1,3 @@
-// pub mod add;
-// pub mod deactivate;
-// pub mod delete;
-
 use crate::commands::queue::QueueIdentifierArgs;
 use crate::error::{Error, Result};
 
@@ -28,8 +24,8 @@ pub struct AddJobArgs {
     pub file: Option<PathBuf>,
 
     /// Name of the job
-    #[arg(short, long = "name", required_unless_present = "file")]
-    job_name: Option<String>,
+    #[arg(short, long = "name")]
+    job_name: String,
 
     #[arg(long, help = "the description of the job")]
     description: Option<String>,
@@ -40,7 +36,6 @@ pub struct AddJobArgs {
         long,
         // value_parser = parse_cron,
         help = "a 5-7 fields cron schedule between single or double quotes (e.g. '* * * * *')",
-        required_unless_present = "file"
         )]
     schedule: Option<String>,
 
@@ -55,8 +50,7 @@ pub struct AddJobArgs {
     #[arg(
         short,
         long,
-        help = "the image name as <optional_registry>/<repository>:<tag>",
-        required_unless_present = "file"
+        help = "the image name as <optional_registry>/<repository>:<tag>"
     )]
     image_name: Option<String>,
 
@@ -132,10 +126,6 @@ impl TryFrom<AddJobArgs> for AddJobRequest {
     type Error = crate::error::Error;
 
     fn try_from(value: AddJobArgs) -> std::result::Result<Self, Self::Error> {
-        let name = value
-            .job_name
-            .ok_or_else(|| Error::Cli("Missing job name"))?;
-
         let schedule_str = value.schedule.map(|s| {
             let _ = parse_cron(&s).expect("Invalid cron expression");
             s.to_string()
@@ -152,7 +142,7 @@ impl TryFrom<AddJobArgs> for AddJobRequest {
             .ok_or_else(|| Error::Cli("Missing queue name"))?;
 
         let req = AddJobRequest {
-            job_name: name,
+            job_name: value.job_name,
             description: value.description,
             schedule,
             image_name,
@@ -173,7 +163,7 @@ impl TryFrom<AddJobArgs> for AddJobRequest {
 impl AddJobArgs {
     pub fn default(&self) -> Self {
         Self {
-            file: None,
+            file: self.file.to_owned(),
             job_name: self.job_name.to_owned(),
             description: self.description.to_owned(),
             schedule: self.schedule.to_owned(),
@@ -192,7 +182,6 @@ impl AddJobArgs {
 
     /// Merges [AddJobArgs] provided via cli command with those provided in the job
     /// definition file, giving precedence to the cli arguments.
-    #[tracing::instrument(skip_all, fields(file = ?self.file))]
     pub fn resolve(self) -> Result<AddJobRequest> {
         let Some(path) = &self.file else {
             let req: AddJobRequest = self.try_into()?;
@@ -202,10 +191,7 @@ impl AddJobArgs {
         let content = std::fs::read_to_string(path)?;
         let parsed: AddJobArgs = toml::from_str(&content)?;
 
-        let job_name = self
-            .job_name
-            .or(parsed.job_name)
-            .ok_or_else(|| Error::Cli("Missing job name"))?;
+        let job_name = self.job_name;
 
         let schedule_str = self.schedule.map(|s| {
             let _ = parse_cron(&s).expect("Invalid cron expression");
@@ -499,8 +485,8 @@ impl JobService {
         Self { client }
     }
 
-    pub async fn execute(self, command: JobSubcommand) -> Result<()> {
-        match command {
+    pub async fn execute(self, command: Box<JobSubcommand>) -> Result<()> {
+        match *command {
             JobSubcommand::Add { args } => self.add_job(args).await,
             JobSubcommand::Deactivate { identifier } => self.deactivate_job(identifier).await,
             JobSubcommand::Delete { identifier } => self.delete_job(identifier).await,
@@ -537,8 +523,10 @@ impl JobService {
     #[tracing::instrument(skip_all)]
     async fn add_job_inner(mut self, payload: AddJobRequest) -> Result<()> {
         let name = payload.job_name.clone();
+
         let response: Response<JobServiceResponse> =
             self.client.add_job(Request::new(payload)).await?;
+
         let inner = response.get_ref();
 
         if inner.success {

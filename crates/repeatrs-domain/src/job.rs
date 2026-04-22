@@ -1,12 +1,11 @@
 use crate::error::DomainError;
 use crate::{IsId, QueueId};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use croner::Cron;
 use repeatrs_proto::repeatrs::{AddJobRequest, JobItem};
 use serde::Serialize;
 use std::{fmt::Display, ops::Deref, str::FromStr};
-use tokio::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +98,7 @@ impl From<JobStatus> for String {
     }
 }
 
+/// Represents the information needed to instantiate a new job.
 #[derive(Debug)]
 pub struct NewJob {
     /// Unique job name
@@ -141,57 +141,177 @@ pub struct NewJob {
     pub timeout_seconds: Option<i32>,
 }
 
+/// A general representation of a job used to represent a job already
+/// persisted in the database.
 #[derive(Debug)]
 pub struct Job {
     /// Unique ID of the job, primary key
-    pub job_id: JobId,
+    job_id: JobId,
 
     /// Unique job name
-    pub job_name: String,
+    job_name: String,
 
     /// The job description
-    pub description: Option<String>,
+    description: Option<String>,
 
     /// schedule of the cronjob or execution time
-    pub schedule: Cron,
+    schedule: Cron,
 
     /// Options for running the container
-    pub options: Option<String>,
+    options: Option<String>,
 
     /// Image name as <optional_registry>/<image_name>:tag
-    pub image_name: String,
+    image_name: String,
 
     /// The command to run the container
-    pub command: Option<String>,
+    command: Option<String>,
 
     /// Arguments for the command
-    pub args: Option<String>,
+    args: Option<String>,
 
     /// Retry the job if last execution failed
-    pub max_retries: i32,
+    max_retries: i32,
 
     /// Current status of the job
-    pub status: JobStatus,
+    status: JobStatus,
 
     /// Job priority
-    pub priority: Option<i32>,
+    priority: i32,
 
     /// Identifier of the queue this job belongs to
-    pub queue_id: QueueId,
+    queue_id: QueueId,
 
     /// Name of the queue this job belongs to
-    pub queue_name: String,
+    queue_name: String,
 
     /// Maximum number of identical jobs running concurrently
-    pub max_concurrency: Option<i32>,
+    max_concurrency: i32,
 
     /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
-    pub timeout_seconds: Option<i32>,
+    timeout_seconds: Option<Duration>,
 
     /// Job creation timestamp
-    pub created_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
 
-    pub updated_at: DateTime<Utc>,
+    /// Time this job was last updated
+    updated_at: DateTime<Utc>,
+}
+
+impl Job {
+    // NOTE: we want to keep the fields of Job private and avoid
+    // defining another DTO with public fields. With Builders
+    // it's possible to partially instantiated objects. Job and
+    // JobRow are internal types not exposed publicly so the
+    // inconvenience of having too many fields does not leak.
+    /// Builds a [`Job`] from database informations
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_row(
+        job_id: JobId,
+        job_name: String,
+        description: Option<String>,
+        schedule: Cron,
+        options: Option<String>,
+        image_name: String,
+        command: Option<String>,
+        args: Option<String>,
+        max_retries: i32,
+        status: JobStatus,
+        priority: i32,
+        queue_id: QueueId,
+        queue_name: String,
+        max_concurrency: i32,
+        timeout_seconds: Option<Duration>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Job {
+        Job {
+            job_id,
+            job_name,
+            description,
+            schedule,
+            options,
+            image_name,
+            command,
+            args,
+            max_retries,
+            status,
+            priority,
+            queue_id,
+            queue_name,
+            max_concurrency,
+            timeout_seconds,
+            created_at,
+            updated_at,
+        }
+    }
+
+    pub fn job_id(&self) -> &JobId {
+        &self.job_id
+    }
+
+    pub fn job_name(&self) -> &str {
+        &self.job_name
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    pub fn schedule(&self) -> &Cron {
+        &self.schedule
+    }
+
+    pub fn options(&self) -> Option<&str> {
+        self.options.as_deref()
+    }
+
+    pub fn image_name(&self) -> &str {
+        &self.image_name
+    }
+
+    pub fn command(&self) -> Option<&str> {
+        self.command.as_deref()
+    }
+
+    pub fn args(&self) -> Option<&str> {
+        self.args.as_deref()
+    }
+
+    pub fn max_retries(&self) -> i32 {
+        self.max_retries
+    }
+
+    pub fn status(&self) -> &JobStatus {
+        &self.status
+    }
+
+    pub fn priority(&self) -> i32 {
+        self.priority
+    }
+
+    pub fn queue_id(&self) -> &QueueId {
+        &self.queue_id
+    }
+
+    pub fn queue_name(&self) -> &str {
+        &self.queue_name
+    }
+
+    pub fn max_concurrency(&self) -> i32 {
+        self.max_concurrency
+    }
+
+    pub fn timeout_seconds(&self) -> Option<Duration> {
+        self.timeout_seconds
+    }
+
+    pub fn created_at(&self) -> DateTime<Utc> {
+        self.created_at
+    }
+
+    pub fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
 }
 
 // TODO: move to controller layer
@@ -205,8 +325,19 @@ impl Job {
             image_name: self.image_name.to_string(),
             queue_name: queue_name.to_string(),
             max_retries: self.max_retries,
-            priority: self.priority.unwrap_or_default(),
+            priority: self.priority(),
         }
+    }
+
+    /// Returns the next occurrence of the job.
+    pub fn calculate_next_occurrence(
+        job: &Job,
+        inclusive_now: bool,
+    ) -> Result<DateTime<Utc>, croner::errors::CronError> {
+        let deadline = job
+            .schedule
+            .find_next_occurrence(&Utc::now(), inclusive_now)?;
+        Ok(deadline)
     }
 }
 

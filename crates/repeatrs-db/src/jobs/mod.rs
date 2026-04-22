@@ -207,6 +207,15 @@ impl From<JobStatus> for DbJobStatus {
     }
 }
 
+impl From<&JobStatus> for DbJobStatus {
+    fn from(value: &JobStatus) -> Self {
+        match value {
+            JobStatus::Active => DbJobStatus::Active,
+            JobStatus::Inactive => DbJobStatus::Inactive,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct JobRow {
     /// Unique ID of the job, primary key
@@ -240,7 +249,7 @@ struct JobRow {
     status: DbJobStatus,
 
     /// Job priority
-    priority: Option<i32>,
+    priority: i32,
 
     /// Identifier of the queue this job belongs to
     queue_id: DbQueueId,
@@ -249,10 +258,10 @@ struct JobRow {
     queue_name: String,
 
     /// Maximum number of identical jobs running concurrently
-    max_concurrency: Option<i32>,
+    max_concurrency: i32,
 
     /// A hard limit on the duration of the job, after which the job is terminated.
-    timeout_seconds: Option<i32>,
+    timeout_seconds: Option<i64>,
 
     /// Job creation timestamp
     created_at: DateTime<Utc>,
@@ -275,75 +284,76 @@ impl TryFrom<JobRow> for Job {
 
     fn try_from(value: JobRow) -> Result<Self, Self::Error> {
         let schedule = Cron::from_str(&value.schedule)?;
+        let timeout_seconds = value.timeout_seconds.map(|t| chrono::Duration::seconds(t));
 
-        let job = Job {
-            job_id: JobId::new(value.job_id().0),
-            job_name: value.job_name,
-            description: value.description,
+        let job = Job::from_row(
+            JobId::new(value.job_id().0),
+            value.job_name,
+            value.description,
             schedule,
-            options: value.options,
-            image_name: value.image_name, // validate
-            command: value.command,
-            args: value.args,
-            max_retries: value.max_retries,
-            status: value.status.into(),
-            priority: value.priority,
-            queue_id: value.queue_id.into(),
-            max_concurrency: value.max_concurrency,
-            timeout_seconds: value.timeout_seconds,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            queue_name: value.queue_name,
-        };
+            value.options,
+            value.image_name, // validate
+            value.command,
+            value.args,
+            value.max_retries,
+            value.status.into(),
+            value.priority,
+            value.queue_id.into(),
+            value.queue_name,
+            value.max_concurrency,
+            timeout_seconds,
+            value.created_at,
+            value.updated_at,
+        );
 
         Ok(job)
     }
 }
 
 impl From<Job> for JobRow {
-    fn from(value: Job) -> Self {
-        Self {
-            job_id: DbJobId(value.job_id.inner()),
-            job_name: value.job_name,
-            description: value.description,
-            schedule: value.schedule.to_string(),
-            options: value.options,
-            image_name: value.image_name,
-            command: value.command,
-            args: value.args,
-            max_retries: value.max_retries,
-            status: value.status.into(),
-            priority: value.priority,
-            queue_id: value.queue_id.into(),
-            max_concurrency: value.max_concurrency,
-            timeout_seconds: value.timeout_seconds,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            queue_name: value.queue_name,
+    fn from(value: Job) -> JobRow {
+        JobRow {
+            job_id: DbJobId(value.job_id().inner()),
+            job_name: value.job_name().to_owned(),
+            description: value.description().map(|s| s.to_string()),
+            schedule: value.schedule().to_string(),
+            options: value.options().map(|s| s.to_string()),
+            image_name: value.image_name().to_owned(),
+            command: value.command().map(|s| s.to_string()),
+            args: value.args().map(|s| s.to_string()),
+            max_retries: value.max_retries(),
+            status: value.status().into(),
+            priority: value.priority(),
+            queue_id: value.queue_id().into(),
+            max_concurrency: value.max_concurrency(),
+            timeout_seconds: value.timeout_seconds().map(|d| d.num_seconds()),
+            created_at: value.created_at(),
+            updated_at: value.updated_at(),
+            queue_name: value.queue_name().to_string(),
         }
     }
 }
 
 impl From<&Job> for JobRow {
-    fn from(value: &Job) -> Self {
-        Self {
-            job_id: DbJobId(value.job_id.inner()),
-            job_name: value.job_name.clone(),
-            description: value.description.clone(),
-            schedule: value.schedule.to_string(),
-            options: value.options.clone(),
-            image_name: value.image_name.clone(),
-            command: value.command.clone(),
-            args: value.args.clone(),
-            max_retries: value.max_retries,
-            status: value.status.clone().into(),
-            priority: value.priority,
-            queue_id: value.queue_id.into(),
-            max_concurrency: value.max_concurrency,
-            timeout_seconds: value.timeout_seconds,
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            queue_name: value.queue_name.clone(),
+    fn from(value: &Job) -> JobRow {
+        JobRow {
+            job_id: DbJobId(value.job_id().inner()),
+            job_name: value.job_name().to_owned(),
+            description: value.description().map(|s| s.to_string()),
+            schedule: value.schedule().to_string(),
+            options: value.options().map(|s| s.to_string()),
+            image_name: value.image_name().to_owned(),
+            command: value.command().map(|s| s.to_string()),
+            args: value.args().map(|s| s.to_string()),
+            max_retries: value.max_retries(),
+            status: value.status().into(),
+            priority: value.priority(),
+            queue_id: value.queue_id().into(),
+            max_concurrency: value.max_concurrency(),
+            timeout_seconds: value.timeout_seconds().map(|d| d.num_seconds()),
+            created_at: value.created_at(),
+            updated_at: value.updated_at(),
+            queue_name: value.queue_name().to_string(),
         }
     }
 }

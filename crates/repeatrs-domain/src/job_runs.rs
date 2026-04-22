@@ -183,16 +183,28 @@ pub struct NewJobRun {
 }
 
 impl NewJobRun {
-    fn new(job_id: JobId, queue_id: QueueId, scheduled_time: DateTime<Utc>) -> Self {
+    pub fn new(job_id: &JobId, queue_id: &QueueId, scheduled_time: &DateTime<Utc>) -> Self {
         Self {
-            job_id,
-            queue_id,
-            scheduled_time,
+            job_id: job_id.to_owned(),
+            queue_id: queue_id.to_owned(),
+            scheduled_time: scheduled_time.to_owned(),
         }
+    }
+
+    pub fn job_id(&self) -> &JobId {
+        &self.job_id
+    }
+
+    pub fn queue_id(&self) -> &QueueId {
+        &self.queue_id
+    }
+
+    pub fn scheduled_time(&self) -> DateTime<Utc> {
+        self.scheduled_time
     }
 }
 
-/// Used in the Service Layer to represent a JobRun as returned by the Repository
+/// Represents a job run that has been persisted in the database.
 #[derive(Debug)]
 pub struct JobRun {
     /// Unique ID of the job run, primary key
@@ -239,11 +251,12 @@ pub struct JobRun {
 }
 
 impl JobRun {
-    // NOTE: we want to keep the fields private and avoid defining
-    // yet another DTO for the sole purpose of instantiating a JobRun.
-    // JobRun and JobRunRow are internal types not exposed publicly
-    // so the inconvenience of having too many fields does not leak.
-    /// Builds a `JobRun` from database informations
+    // NOTE: we want to keep the fields of JobRun private and avoid
+    // defining another DTO with public fields. With Builders
+    // it's possible to partially instantiated objects. JobRun and
+    // JobRunRow are internal types not exposed publicly so the
+    // inconvenience of having too many fields does not leak.
+    /// Builds a [`JobRun`] from database informations
     #[allow(clippy::too_many_arguments)]
     pub fn from_row(
         job_run_id: JobRunId,
@@ -260,8 +273,8 @@ impl JobRun {
         error: Option<String>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
-    ) -> Self {
-        Self {
+    ) -> JobRun {
+        JobRun {
             job_run_id,
             job_id,
             queue_id,
@@ -336,29 +349,6 @@ impl JobRun {
     }
 }
 
-/// DTO to insert new job runs in the `job_runs` table
-pub struct JobRunInsert {
-    job_id: JobId,
-    next_run_at: DateTime<Utc>,
-}
-
-impl JobRunInsert {
-    pub fn new(job_id: JobId, next_run_at: DateTime<Utc>) -> Self {
-        Self {
-            job_id,
-            next_run_at,
-        }
-    }
-
-    pub fn job_id(&self) -> JobId {
-        self.job_id
-    }
-
-    pub fn next_run_at(&self) -> DateTime<Utc> {
-        self.next_run_at
-    }
-}
-
 pub trait JobRunOperations<E>: Sync + Send + 'static {
     type Err: std::error::Error;
 
@@ -366,7 +356,7 @@ pub trait JobRunOperations<E>: Sync + Send + 'static {
     fn add_job_runs(
         &self,
         tx: &mut E,
-        job_info: &[JobRunInsert],
+        job_run_info: &[NewJobRun],
     ) -> impl std::future::Future<Output = Result<(), Self::Err>> + Send;
 
     /// Returns all the job runs of a specific job given its id

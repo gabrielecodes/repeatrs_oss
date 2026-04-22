@@ -1,4 +1,4 @@
-use repeatrs_domain::JobRunInsert;
+use repeatrs_domain::NewJobRun;
 use sqlx::{Executor, Postgres};
 
 use crate::DbResult;
@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 
 pub(crate) async fn insert_job_runs<'e, E>(
     exec: E,
-    job_info: &[JobRunInsert],
+    job_info: &[NewJobRun],
 ) -> DbResult<Vec<DbJobRunId>>
 where
     E: Executor<'e, Database = Postgres>,
@@ -21,7 +21,7 @@ where
 
     let job_ids: Vec<DbJobId> = job_info.into_iter().map(|j| j.job_id().into()).collect();
     let next_run_times: Vec<DateTime<Utc>> =
-        job_info.into_iter().map(|j| j.next_run_at()).collect();
+        job_info.into_iter().map(|j| j.scheduled_time()).collect();
 
     let run_ids: Vec<DbJobRunId> = sqlx::query!(
         r#"

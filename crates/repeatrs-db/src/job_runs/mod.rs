@@ -6,7 +6,7 @@ use crate::{DbResult, error::DbError, jobs::DbJobId, queues::DbQueueId, workers:
 
 use chrono::{DateTime, Utc};
 use repeatrs_domain::{
-    ExitStatus, JobId, JobRun, JobRunId, JobRunInsert, JobRunOperations, JobRunStatus, QueueId,
+    ExitStatus, JobId, JobRun, JobRunId, JobRunOperations, JobRunStatus, NewJobRun, QueueId,
     WorkerId,
 };
 use sqlx::{Postgres, Transaction};
@@ -23,9 +23,9 @@ impl<'e> JobRunOperations<Transaction<'e, Postgres>> for PgJobRunRepository {
     async fn add_job_runs(
         &self,
         tx: &mut Transaction<'e, Postgres>,
-        job_info: &[JobRunInsert],
+        job_run_info: &[NewJobRun],
     ) -> DbResult<()> {
-        let _ = insert_job_runs(&mut **tx, job_info).await?;
+        let _ = insert_job_runs(&mut **tx, job_run_info).await?;
 
         Ok(())
     }

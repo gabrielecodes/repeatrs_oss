@@ -64,11 +64,11 @@ CREATE TABLE
         image_name               TEXT NOT NULL,
         command                  TEXT,
         args                     TEXT,
-        max_retries              INTEGER NOT NULL DEFAULT 0,
+        max_retries              INTEGER NOT NULL DEFAULT 3,
         status                   job_status NOT NULL DEFAULT 'ACTIVE',
         priority                 INTEGER NOT NULL DEFAULT 1,        
         queue_id                 UUID NOT NULL REFERENCES queues (queue_id),
-        max_concurrency          INTEGER NOT NULL,
+        max_concurrency          INTEGER NOT NULL DEFAULT 0,
         timeout_seconds          INTEGER NOT NULL,
         created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -83,7 +83,7 @@ WHERE status = 'ACTIVE';
 ------------------------------------------------
 -- job_runs = queue + history + execution tracking 
 
-CREATE TYPE job_run_status AS ENUM ('QUEUED', 'RUNNING', 'STOPPED', 'FAILED', 'COMPLETED');
+CREATE TYPE job_run_status AS ENUM ('QUEUED', 'RUNNING', 'STOPPED', 'FAILED', 'SKIPPED', 'COMPLETED');
 
 CREATE TABLE
     IF NOT EXISTS job_runs (

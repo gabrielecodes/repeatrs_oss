@@ -50,7 +50,6 @@ pub trait DatabaseContextProvider<'tx, E> {
         T: Send,
         Err: Error + From<sqlx::Error> + Send,
     {
-        // Now 'f.call(tx)' correctly associates the lifetime of 'tx' with the returned Future
         self.execute(|tx| Box::pin(f.call(tx))).await
     }
 }
@@ -76,7 +75,9 @@ impl<'tx> DatabaseContextProvider<'tx, Transaction<'tx, Postgres>> for DatabaseC
                 sqlx::query(&tag_query).execute(&mut *tx).await?;
             }
 
-            match f(&mut tx).await {
+            let boxed_closure = Box::pin(f.call(&mut tx));
+
+            match boxed_closure.await {
                 Ok(result) => match tx.commit().await {
                     Ok(_) => return Ok(result),
                     Err(e) => {

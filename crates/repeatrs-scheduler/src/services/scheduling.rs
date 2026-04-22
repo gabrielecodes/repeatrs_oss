@@ -1,7 +1,10 @@
 use crate::error::ToServiceError;
 use crate::{ServiceResult, err_ctx};
+use chrono::{DateTime, Utc};
 use repeatrs_bundles::JobQueueBundle;
-use repeatrs_domain::{Job, JobOperations, JobQueueOperations, JobRunInsert, JobScheduleState};
+use repeatrs_domain::{
+    Job, JobOperations, JobQueueOperations, JobRunInsert, JobScheduleState, NewJobRun,
+};
 use repeatrs_transaction::{DatabaseContextProvider, TransactionError};
 use std::marker::PhantomData;
 use tracing::{info, instrument};
@@ -37,32 +40,34 @@ where
 
         let runnable_jobs = self
             .database
-            .run(|tx| async move {
+            .execute(|tx| {
                 let job_repo = job_repo.clone();
 
-                // BEGIN
-                // 1. SELECT due job_schedule_state FOR UPDATE SKIP LOCKED
-                // 2. compute next_run_at
-                // 3. INSERT job_runs (idempotent)
-                // 4. UPSERT job_schedule_state
-                // COMMIT
+                Box::pin(async move {
+                    // BEGIN
+                    // 1. SELECT due job_schedule_state FOR UPDATE SKIP LOCKED
+                    // 2. compute next_run_at
+                    // 3. INSERT job_runs (idempotent)
+                    // 4. UPSERT job_schedule_state
+                    // COMMIT
 
-                let runnable_jobs = err_ctx!(job_repo.get_due_jobs(tx).await)?;
+                    let runnable_jobs = err_ctx!(job_repo.get_due_jobs(tx).await)?;
 
-                if !runnable_jobs.is_empty() {
-                    let job_runs_input: Vec<JobRunInsert> = runnable_jobs
-                        .iter()
-                        .map(|j: Job| {
-                            let next_run_at = self.calculate_next_occurrence(j, false);
-                            JobRunInsert::new(j.job_id, next_run_at)
-                        })
-                        .collect();
+                    if !runnable_jobs.is_empty() {
+                        let job_runs_input: Vec<JobRunInsert> = runnable_jobs
+                            .iter()
+                            .map(|job: Job| {
+                                let next_run_at = job.calculate_next_occurrence(j, false);
+                                NewJobRun::new(job.job_id(), queue_id, scheduled_time)
+                            })
+                            .collect();
 
-                    // insert new job_run
-                    // upsert new job schedule state
-                }
+                        // insert new job_run
+                        // upsert new job schedule state
+                    }
 
-                Ok::<Vec<Job>, TransactionError>(runnable_jobs)
+                    Ok::<Vec<Job>, TransactionError>(runnable_jobs)
+                })
             })
             .await
             .map_transaction_error(line!(), file!())?;
@@ -77,16 +82,5 @@ where
         // info!("{} jobs successfully dispatched.", num_jobs.len());
 
         Ok(())
-    }
-
-    /// Returns the next occurrence of the job.
-    fn calculate_next_occurrence(
-        job: &Job,
-        inclusive_now: bool,
-    ) -> Result<DateTime<Utc>, croner::errors::CronError> {
-        let deadline = job
-            .schedule
-            .find_next_occurrence(&Utc::now(), inclusive_now)?;
-        Ok(deadline)
     }
 }

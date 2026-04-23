@@ -98,49 +98,6 @@ impl From<JobStatus> for String {
     }
 }
 
-/// Represents the information needed to instantiate a new job.
-#[derive(Debug)]
-pub struct NewJob {
-    /// Unique job name
-    pub job_name: String,
-
-    /// The job description
-    pub description: Option<String>,
-
-    /// schedule of the cronjob or execution time
-    pub schedule: Cron,
-
-    /// Options for running the container
-    pub options: Option<String>,
-
-    /// Image name as <optional_registry>/<image_name>:tag
-    pub image_name: String,
-
-    /// The command to run the container
-    pub command: Option<String>,
-
-    /// Arguments for the command
-    pub args: Option<String>,
-
-    /// Retry the job if last execution failed
-    pub max_retries: i32,
-
-    /// Current status of the job
-    pub status: JobStatus,
-
-    /// Job priority
-    pub priority: Option<i32>,
-
-    /// Identifier of the queue this job belongs to
-    pub queue_id: QueueId,
-
-    /// Maximum number of identical jobs running concurrently
-    pub max_concurrency: Option<i32>,
-
-    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
-    pub timeout_seconds: Option<i32>,
-}
-
 /// A general representation of a job used to represent a job already
 /// persisted in the database.
 #[derive(Debug)]
@@ -342,62 +299,47 @@ impl Job {
     }
 }
 
-/// Data Transfer Object to translate gRPC (prost) types to an input usable
-/// at the service layer
-#[derive(Clone)]
-pub struct JobDefinition {
-    // Mandatory fields
+/// Represents the information needed to instantiate a new job.
+#[derive(Debug)]
+pub struct NewJob {
+    /// Unique job name
     pub job_name: String,
-    pub schedule: String,
-    pub image_name: String,
-    pub queue_name: String,
-    // Fields with defaults
-    pub max_retries: i32,
-    pub priority: i32,
-    pub max_concurrency: i32,
-    pub timeout_seconds: i32,
-    // Non mandatory fields without defaults
+
+    /// The job description
     pub description: Option<String>,
+
+    /// schedule of the cronjob or execution time
+    pub schedule: Cron,
+
+    /// Options for running the container
     pub options: Option<String>,
+
+    /// Image name as <optional_registry>/<image_name>:tag
+    pub image_name: String,
+
+    /// The command to run the container
     pub command: Option<String>,
+
+    /// Arguments for the command
     pub args: Option<String>,
-}
 
-impl TryFrom<AddJobRequest> for JobDefinition {
-    type Error = DomainError;
+    /// Retry the job if last execution failed
+    pub max_retries: i32,
 
-    //TODO: missing checks
-    fn try_from(value: AddJobRequest) -> core::result::Result<Self, Self::Error> {
-        if let Err(e) = value.schedule.parse::<Cron>() {
-            return Err(Self::Error::Validation(e.to_string()));
-        };
+    /// Current status of the job
+    pub status: JobStatus,
 
-        let job_name = value.job_name.replace(" ", "_");
-        let queue_name = value.queue_name.replace(" ", "_");
+    /// Job priority
+    pub priority: Option<i32>,
 
-        let args = if value.args.is_empty() {
-            None::<String>
-        } else {
-            Some(value.args.join(" "))
-        };
+    /// Identifier of the queue this job belongs to
+    pub queue_name: String,
 
-        let def = JobDefinition {
-            job_name,
-            queue_name,
-            description: value.description,
-            schedule: value.schedule,
-            image_name: value.image_name,
-            max_retries: value.max_retries,
-            options: value.options,
-            command: value.command,
-            args,
-            priority: value.priority,
-            max_concurrency: value.max_concurrency,
-            timeout_seconds: value.timeout_seconds,
-        };
+    /// Maximum number of identical jobs running concurrently
+    pub max_concurrency: Option<i32>,
 
-        Ok(def)
-    }
+    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
+    pub timeout_seconds: Option<i32>,
 }
 
 pub trait JobOperations<E>: Sync + Send + 'static {
@@ -406,7 +348,7 @@ pub trait JobOperations<E>: Sync + Send + 'static {
     fn add_job(
         &self,
         tx: &mut E,
-        job: &JobDefinition,
+        job: &NewJob,
         queue_id: &QueueId,
     ) -> impl std::future::Future<Output = Result<JobId, Self::Err>> + Send;
 

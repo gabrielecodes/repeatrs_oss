@@ -1,4 +1,4 @@
-use crate::{DbResult, job_schedule_state::DbJobScheduleState};
+use crate::{DbResult, job_schedules::DbJobScheduleState};
 
 use chrono::{DateTime, Utc};
 use sqlx::Postgres;

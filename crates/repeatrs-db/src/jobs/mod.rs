@@ -10,7 +10,7 @@ use crate::{DbResult, error::DbError, queues::DbQueueId};
 
 use chrono::{DateTime, Utc};
 use croner::Cron;
-use repeatrs_domain::{Job, JobDefinition, JobId, JobOperations, JobStatus, QueueId};
+use repeatrs_domain::{Job, JobId, JobOperations, JobStatus, NewJob, QueueId};
 use sqlx::{Postgres, Transaction, Type};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -24,7 +24,7 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
     async fn add_job(
         &self,
         tx: &mut Transaction<'e, Postgres>,
-        job: &JobDefinition,
+        job: &NewJob,
         queue_id: &QueueId,
     ) -> DbResult<JobId> {
         let job_id = add_job(&mut **tx, job, &queue_id.into()).await?;
@@ -214,6 +214,49 @@ impl From<&JobStatus> for DbJobStatus {
             JobStatus::Inactive => DbJobStatus::Inactive,
         }
     }
+}
+
+/// Represents the information needed to instantiate a new job.
+#[derive(Debug)]
+pub struct CreateJobInput {
+    /// Unique job name
+    pub job_name: String,
+
+    /// The job description
+    pub description: Option<String>,
+
+    /// schedule of the cronjob or execution time
+    pub schedule: String,
+
+    /// Options for running the container
+    pub options: Option<String>,
+
+    /// Image name as <optional_registry>/<image_name>:tag
+    pub image_name: String,
+
+    /// The command to run the container
+    pub command: Option<String>,
+
+    /// Arguments for the command
+    pub args: Option<String>,
+
+    /// Retry the job if last execution failed
+    pub max_retries: i32,
+
+    /// Current status of the job
+    pub status: JobStatus,
+
+    /// Job priority
+    pub priority: Option<i32>,
+
+    /// Identifier of the queue this job belongs to
+    pub queue_name: String,
+
+    /// Maximum number of identical jobs running concurrently
+    pub max_concurrency: Option<i32>,
+
+    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
+    pub timeout_seconds: Option<i32>,
 }
 
 #[derive(Debug)]

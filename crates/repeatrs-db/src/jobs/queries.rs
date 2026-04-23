@@ -4,14 +4,10 @@ use crate::{
     queues::DbQueueId,
 };
 
-use repeatrs_domain::JobDefinition;
+use repeatrs_domain::NewJob;
 use sqlx::{Executor, Postgres};
 
-pub(crate) async fn add_job<'e, E>(
-    exec: E,
-    job: &JobDefinition,
-    queue_id: &DbQueueId,
-) -> DbResult<DbJobId>
+pub(crate) async fn add_job<'e, E>(exec: E, job: &NewJob, queue_id: &DbQueueId) -> DbResult<DbJobId>
 where
     E: Executor<'e, Database = Postgres>,
 {
@@ -39,7 +35,7 @@ where
             "#,
         job.job_name,
         job.description,
-        job.schedule,
+        job.schedule.to_string(),
         job.options,
         job.image_name,
         job.command,

@@ -1,13 +1,13 @@
 pub mod error;
 // mod job_queues;
 mod job_runs;
-mod job_schedule_state;
+mod job_schedules;
 mod jobs;
 mod queues;
 mod workers;
 
 pub use job_runs::PgJobRunRepository;
-pub use job_schedule_state::PgJobScheduleStateRepository;
+pub use job_schedules::PgJobScheduleStateRepository;
 pub use jobs::PgJobRepository;
 pub use queues::PgQueueRepository;
 

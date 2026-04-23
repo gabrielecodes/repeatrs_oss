@@ -1,19 +1,19 @@
 //! Handles incoming gRPC requests.
 
-use crate::ServiceResult;
-use crate::error::ToStatusError;
+use crate::error::{ApiError, ToStatusError};
 use crate::services::job::JobService;
 use repeatrs_bundles::JobBundle;
-use repeatrs_domain::{JobDefinition, JobId, QueueId};
+use repeatrs_domain::{JobId, NewJob, QueueId};
 use repeatrs_proto::repeatrs::grpc_job_service_server::GrpcJobService;
 use repeatrs_proto::repeatrs::job_identifier_request::JobIdentifier;
 use repeatrs_proto::repeatrs::queue_identifier_request::QueueIdentifier;
 use repeatrs_proto::repeatrs::{
-    AddJobRequest, JobIdentifierRequest, JobItem, JobListResponse, JobServiceResponse,
+    AddJobRequest, JobIdentifierRequest, JobListResponse, JobServiceResponse,
     QueueIdentifierRequest,
 };
 use repeatrs_transaction::DatabaseContextProvider;
 use std::marker::PhantomData;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tonic::{Request, Response, Status};
@@ -60,7 +60,8 @@ where
         Span::current().record("job_name", &req.job_name);
         Span::current().record("queue_name", &req.queue_name);
 
-        let job_def = JobDefinition::try_from(req).map_status_error("Incorrect job definition")?;
+        let job_def = NewJob::try_from(req)
+            .map_status_error(|| format!("Invalid job definition for job {}", &req.job_name))?;
 
         let result = self.service.add_job(job_def).await;
 
@@ -190,4 +191,42 @@ where
     }
 }
 
-// TODO: impl From<JobItem> for Job
+/// NewType used to instantiate a `NewJob`
+struct NewJobRequest(NewJob);
+
+/// Transfer `Job` type used for input validation at the controller layer.
+impl TryFrom<AddJobRequest> for NewJobRequest {
+    type Error = ApiError;
+
+    //TODO: missing checks
+    fn try_from(value: AddJobRequest) -> core::result::Result<Self, Self::Error> {
+        let schedule = croner::Cron::from_str(&value.schedule)?;
+
+        let job_name = value.job_name.replace(" ", "_");
+        let queue_name = value.queue_name.replace(" ", "_");
+
+        let args = if value.args.is_empty() {
+            None::<String>
+        } else {
+            Some(value.args.join(" "))
+        };
+
+        let def = NewJob {
+            job_name: value.job_name,
+            description: value.description,
+            schedule: schedule,
+            options: value.options,
+            image_name: value.image_name,
+            command: value.command,
+            args: value.args,
+            max_retries: value.max_retries,
+            status: value.status,
+            priority: value.priority,
+            queue_name: value.queue_name,
+            max_concurrency: value.max_concurrency,
+            timeout_seconds: value.timeout_seconds,
+        };
+
+        Ok(def)
+    }
+}

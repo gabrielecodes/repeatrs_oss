@@ -13,13 +13,14 @@
 //!
 
 use config::ConfigError;
-use repeatrs_domain::error::DomainError;
+// use repeatrs_domain::error::DomainError;
+use croner::errors::CronError;
 use repeatrs_transaction::TransactionError;
 use std::fmt::Debug;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ServiceError {
+pub enum ApiError {
     #[error("Internal error")]
     Error {
         #[source]
@@ -37,9 +38,12 @@ pub enum ServiceError {
     #[error("{0}")]
     Transaction(#[from] TransactionError),
 
-    // --- Parsing & Casting ---
+    // --- Validation ---
     #[error("Error parsing UUID: {0}")]
-    Uuid(#[from] uuid::Error),
+    UuidValidation(#[from] uuid::Error),
+
+    #[error("Validation error")]
+    Validation(#[from] CronError),
 
     // --- Misc ---
     #[error("{0}")]
@@ -50,14 +54,22 @@ pub enum ServiceError {
 }
 
 pub trait ToStatusError<T> {
-    fn map_status_error(self, msg: &'static str) -> Result<T, tonic::Status>;
+    fn map_status_error<F>(self, msg_fn: F) -> Result<T, tonic::Status>
+    where
+        F: FnOnce(ApiError) -> String;
 }
 
-impl<T> ToStatusError<T> for Result<T, DomainError> {
-    fn map_status_error(self, msg: &'static str) -> Result<T, tonic::Status> {
+impl<T> ToStatusError<T> for Result<T, ApiError> {
+    fn map_status_error<F>(self, msg_fn: F) -> Result<T, tonic::Status>
+    where
+        F: FnOnce(ApiError) -> String,
+    {
         //TODO: match into different status errors giving context
-        // self.map_err(|e| match e { })
-        Err(tonic::Status::invalid_argument(msg))
+        self.map_err(|e| {
+            let message = msg_fn(e);
+            tonic::Status::internal(message)
+        })
+        // Err(tonic::Status::invalid_argument(msg))
     }
 }
 

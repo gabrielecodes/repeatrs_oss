@@ -69,7 +69,7 @@ CREATE TABLE
         priority                 INTEGER NOT NULL DEFAULT 1,        
         queue_id                 UUID NOT NULL REFERENCES queues (queue_id),
         max_concurrency          INTEGER NOT NULL DEFAULT 0,
-        timeout_seconds          INTEGER NOT NULL,
+        timeout_seconds          INTEGER NOT NULL DEFAULT 1200,
         created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );

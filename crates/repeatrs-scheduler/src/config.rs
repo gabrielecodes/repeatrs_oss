@@ -5,8 +5,8 @@
 //! 2. Configuration File toml or yaml)
 //! 3. Default Values
 
-use crate::ServiceResult;
-use crate::error::ServiceError;
+use crate::ApiResult;
+use crate::error::ApiError;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use std::{fmt::Display, str::FromStr};
@@ -86,9 +86,9 @@ impl LogLevel {
 }
 
 impl FromStr for LogLevel {
-    type Err = ServiceError;
+    type Err = ApiError;
 
-    fn from_str(s: &str) -> ServiceResult<Self> {
+    fn from_str(s: &str) -> ApiResult<Self> {
         let format = match s {
             "erorr" => Self::Error,
             "warn" => Self::Warn,
@@ -238,7 +238,7 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn init() -> ServiceResult<()> {
+    pub fn init() -> ApiResult<()> {
         let config = config::Config::builder()
             .set_default("scheduler_grpc_url", SCHEDULER_GRPC_URL)?
             .set_default("log_level", "info")?
@@ -264,7 +264,7 @@ impl Config {
 
         let de: Config = config
             .try_deserialize()
-            .map_err(ServiceError::Config)
+            .map_err(ApiError::Config)
             .expect("Failed deserializing configuration");
 
         CONFIG.set(de).expect("Config already initialized.");

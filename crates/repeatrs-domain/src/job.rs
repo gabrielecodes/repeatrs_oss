@@ -1,9 +1,11 @@
-use crate::error::DomainError;
-use crate::{IsId, QueueId};
+use crate::{
+    IsId, QueueId,
+    error::{DomainError, ValidationError},
+};
 
 use chrono::{DateTime, Duration, Utc};
 use croner::Cron;
-use repeatrs_proto::repeatrs::{AddJobRequest, JobItem};
+use repeatrs_proto::repeatrs::JobItem;
 use serde::Serialize;
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
@@ -299,6 +301,99 @@ impl Job {
     }
 }
 
+#[derive(Debug)]
+pub struct ImageName(String);
+
+impl ImageName {
+    /// Returns the image name as string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for ImageName {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() || !value.contains('/') && !value.contains(':') {
+            return Err(ValidationError::InvalidImageName);
+        }
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+pub enum ContainerOptions {
+    /// --read-only
+    ReadOnly,
+    /// --rm
+    Remove,
+    /// --memory=<limit>
+    MemoryLimit(String),
+    /// Catch-all for any other flag we haven't explicitly modeled yet
+    Custom(String),
+}
+
+impl ContainerOptions {
+    /// Returns the container options as string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for ContainerOptions {
+    fn from(value: String) -> Self {
+        let flag = value.replace("--", "");
+
+        match flag.as_ref() {
+            "rm" => ContainerOptions::Remove,
+            rest => Self::Custom(rest.to_string()),
+        }
+    }
+}
+
+impl TryFrom<String> for ContainerOptions {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let forbidden = ["--privileged", "--net=host", "cap-add=ALL", "-v /:"];
+
+        for flag in forbidden {
+            if value.contains(flag) {
+                return Err(ValidationError::InvalidContainerOptions);
+            }
+        }
+
+        // Enforce resource limits if they are missing
+        if !value.contains("--memory") {
+            return Err(ValidationError::InvalidContainerOptions);
+        }
+
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug)]
+pub struct RunCommand(String);
+
+impl RunCommand {
+    /// Returns the run command as string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct CommandArgs(String);
+
+impl CommandArgs {
+    /// Returns the run arguments as string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Represents the information needed to instantiate a new job.
 #[derive(Debug)]
 pub struct NewJob {
@@ -312,22 +407,19 @@ pub struct NewJob {
     pub schedule: Cron,
 
     /// Options for running the container
-    pub options: Option<String>,
+    pub options: ContainerOptions,
 
     /// Image name as <optional_registry>/<image_name>:tag
-    pub image_name: String,
+    pub image_name: ImageName,
 
     /// The command to run the container
-    pub command: Option<String>,
+    pub command: RunCommand,
 
     /// Arguments for the command
-    pub args: Option<String>,
+    pub args: CommandArgs,
 
     /// Retry the job if last execution failed
-    pub max_retries: i32,
-
-    /// Current status of the job
-    pub status: JobStatus,
+    pub max_retries: Option<i32>,
 
     /// Job priority
     pub priority: Option<i32>,

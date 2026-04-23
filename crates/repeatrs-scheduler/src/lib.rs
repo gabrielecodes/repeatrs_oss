@@ -32,7 +32,7 @@ pub use services::{job::JobService, queue::QueueService, scheduling::SchedulingS
 pub use scheduler::Scheduler;
 pub use utils::initialize_tracing;
 
-pub type ServiceResult<T> = core::result::Result<T, error::ServiceError>;
+pub type ApiResult<T> = core::result::Result<T, error::ApiError>;
 
 // External Dependencies
 // use core::net::SocketAddr;

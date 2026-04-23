@@ -10,7 +10,7 @@
 //! - Interacting with the repository to perform database operations.
 //! - Providing a clear API for controllers.
 
-use crate::{ServiceResult, err_ctx, error::ToServiceError};
+use crate::{ApiResult, err_ctx, error::ToApiError};
 use repeatrs_bundles::QueueBundle;
 use repeatrs_domain::{Queue, QueueId, QueueOperations};
 use repeatrs_proto::repeatrs::QueueItem;
@@ -43,7 +43,7 @@ where
     }
 
     #[instrument(skip_all, err)]
-    pub async fn get_queue_names(&self) -> ServiceResult<Vec<String>> {
+    pub async fn get_queue_names(&self) -> ApiResult<Vec<String>> {
         let queue_repo = self.bundle.queue_repo();
 
         let queues = self
@@ -67,7 +67,7 @@ where
 
     /// Returns the queue corresponding to the given [`QueueId`].
     #[instrument(skip_all, err)]
-    pub async fn get_queue_by_id(&self, queue_id: QueueId) -> ServiceResult<Queue> {
+    pub async fn get_queue_by_id(&self, queue_id: QueueId) -> ApiResult<Queue> {
         let queue_repo = self.bundle.queue_repo();
 
         let queue = self
@@ -88,7 +88,7 @@ where
 
     /// Returns all the queues
     #[instrument(skip_all, err)]
-    pub async fn get_queues(&self) -> ServiceResult<Vec<QueueItem>> {
+    pub async fn get_queues(&self) -> ApiResult<Vec<QueueItem>> {
         let queue_repo = self.bundle.queue_repo();
 
         let queues = self

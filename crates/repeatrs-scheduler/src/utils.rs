@@ -1,8 +1,8 @@
 #![allow(unused)]
 
-use crate::ServiceResult;
+use crate::ApiResult;
 use crate::config::{self, CONFIG, Config, LogLevel, PostgresConfig, config};
-use crate::error::ServiceError;
+use crate::error::ApiError;
 
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -25,7 +25,7 @@ use tracing_subscriber::prelude::*;
 /// ```bash
 /// journalctl -u repeatrs-scheduler -o json | jq
 /// ```
-pub fn initialize_tracing() -> ServiceResult<()> {
+pub fn initialize_tracing() -> ApiResult<()> {
     println!("initializing tracing");
 
     let log_level = config().log_level();

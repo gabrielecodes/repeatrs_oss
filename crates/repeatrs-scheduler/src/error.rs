@@ -27,22 +27,22 @@ pub enum ApiError {
         source: Box<dyn std::error::Error>,
     },
 
-    #[error("{0}")]
+    #[error("Scheduling Error {0}")]
     SchedulingError(String),
 
     // --- Config ---
-    #[error("{0}")]
+    #[error("Configuration Error: {0}")]
     Config(#[from] ConfigError),
 
     // --- Database ---
-    #[error("{0}")]
+    #[error("Transaction Error: {0}")]
     Transaction(#[from] TransactionError),
 
     // --- Validation ---
     #[error("Error parsing UUID: {0}")]
     UuidValidation(#[from] uuid::Error),
 
-    #[error("Validation error")]
+    #[error("Validation error :{0}")]
     Validation(#[from] CronError),
 
     // --- Misc ---
@@ -54,21 +54,13 @@ pub enum ApiError {
 }
 
 pub trait ToStatusError<T> {
-    fn map_status_error<F>(self, msg_fn: F) -> Result<T, tonic::Status>
-    where
-        F: FnOnce(ApiError) -> String;
+    fn map_status_error(self, msg: impl Into<String>) -> Result<T, tonic::Status>;
 }
 
 impl<T> ToStatusError<T> for Result<T, ApiError> {
-    fn map_status_error<F>(self, msg_fn: F) -> Result<T, tonic::Status>
-    where
-        F: FnOnce(ApiError) -> String,
-    {
+    fn map_status_error(self, msg: impl Into<String>) -> Result<T, tonic::Status> {
         //TODO: match into different status errors giving context
-        self.map_err(|e| {
-            let message = msg_fn(e);
-            tonic::Status::internal(message)
-        })
+        self.map_err(|_| tonic::Status::internal(msg))
         // Err(tonic::Status::invalid_argument(msg))
     }
 }
@@ -85,11 +77,11 @@ impl<T> ToStatusError<T> for Result<T, ApiError> {
 //     }
 // }
 
-pub trait ToServiceError<T> {
+pub trait ToApiError<T> {
     fn map_transaction_error(self, line: u32, file: &'static str) -> Result<T, TransactionError>;
 }
 
-impl<T, E> ToServiceError<T> for Result<T, E>
+impl<T, E> ToApiError<T> for Result<T, E>
 where
     E: std::fmt::Display + 'static,
 {

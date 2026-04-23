@@ -52,3 +52,52 @@ where
         }
     }
 }
+
+// /// Represents the information needed to validate and instantiate a [`NewQueue`]
+// pub struct NewQueueInput(NewQueue);
+
+// impl NewQueueInput {
+//     pub fn new(job_info: NewQueue) -> Self {
+//         Self(job_info)
+//     }
+
+//     /// Consumes this object and returns its inner value
+//     pub fn to_inner(self) -> NewQueue {
+//         self.0
+//     }
+// }
+
+// impl TryFrom<AddQuRequest> for NewQueueInput {
+//     type Error = ApiError;
+
+//     //TODO: missing checks
+//     fn try_from(value: AddJobRequest) -> core::result::Result<Self, Self::Error> {
+//         let schedule = croner::Cron::from_str(&value.schedule)?;
+
+//         let job_name = value.job_name.replace(" ", "_");
+//         let queue_name = value.queue_name.replace(" ", "_");
+
+//         let args = if value.args.is_empty() {
+//             None::<String>
+//         } else {
+//             Some(value.args.join(" "))
+//         };
+
+//         let new_job = NewQueue {
+//             job_name: job_name,
+//             description: value.description,
+//             schedule,
+//             options: value.options,
+//             image_name: value.image_name,
+//             command: value.command,
+//             args,
+//             max_retries: value.max_retries,
+//             priority: value.priority,
+//             queue_name: queue_name,
+//             max_concurrency: value.max_concurrency,
+//             timeout_seconds: value.timeout_seconds,
+//         };
+
+//         Ok(NewQueueInput::new(new_job))
+//     }
+// }

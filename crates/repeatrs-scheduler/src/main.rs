@@ -1,7 +1,7 @@
-use repeatrs_scheduler::{Config, ServiceResult, initialize_tracing};
+use repeatrs_scheduler::{ApiResult, Config, initialize_tracing};
 
 #[tokio::main]
-async fn main() -> ServiceResult<()> {
+async fn main() -> ApiResult<()> {
     Config::init().expect("Failed loading configuration.");
 
     let _ = initialize_tracing();

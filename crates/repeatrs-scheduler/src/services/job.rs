@@ -10,9 +10,9 @@
 //! - Interacting with the repository to perform database operations.
 //! - Providing a clear API for controllers.
 
-use crate::{ServiceResult, err_ctx, error::ToServiceError};
+use crate::{ApiResult, controllers::job::NewJobInput, err_ctx, error::ToApiError};
 use repeatrs_bundles::JobBundle;
-use repeatrs_domain::{Job, JobDefinition, JobId, JobOperations, QueueId, QueueOperations};
+use repeatrs_domain::{Job, JobId, JobOperations, QueueId, QueueOperations};
 use repeatrs_proto::repeatrs::JobItem;
 use repeatrs_transaction::{DatabaseContextProvider, TransactionError};
 use std::marker::PhantomData;
@@ -45,23 +45,23 @@ where
 
     /// Adds a job to a queue given the its definition.
     #[instrument(skip_all, fields(job_id = Empty), err)]
-    pub async fn add_job(&self, job_def: JobDefinition) -> ServiceResult<JobId> {
+    pub async fn add_job(&self, job_request: NewJobInput) -> ApiResult<JobId> {
         let job_repo = self.bundle.job_repo();
         let queue_repo = self.bundle.queue_repo();
+        let new_job = job_request.inner();
 
         let result = self
             .database
             .execute(move |tx| {
                 let queue_repo = queue_repo.clone();
                 let job_repo = job_repo.clone();
-
-                let queue_name = job_def.queue_name.clone();
-                let job_def = job_def.clone();
+                let new_job = new_job.clone();
 
                 Box::pin(async move {
-                    let queue = err_ctx!(queue_repo.get_queue_by_name(tx, &queue_name).await)?;
+                    let queue =
+                        err_ctx!(queue_repo.get_queue_by_name(tx, &new_job.queue_name).await)?;
 
-                    let job_id = err_ctx!(job_repo.add_job(tx, &job_def, &queue.queue_id).await)?;
+                    let job_id = err_ctx!(job_repo.add_job(tx, &new_job, &queue.queue_id).await)?;
                     Span::current().record("job_id", job_id.inner().to_string());
 
                     err_ctx!(
@@ -83,7 +83,7 @@ where
 
     /// Returns a list of jobs that belong to the queue corresponding to the input `queue_id`.
     #[instrument(skip(self), err)]
-    pub async fn get_jobs_by_queue_id(&self, queue_id: QueueId) -> ServiceResult<Vec<JobItem>> {
+    pub async fn get_jobs_by_queue_id(&self, queue_id: QueueId) -> ApiResult<Vec<JobItem>> {
         let job_repo = self.bundle.job_repo();
         let queue_repo = self.bundle.queue_repo();
 
@@ -111,7 +111,7 @@ where
 
     /// Returns a list of jobs that belong to the queue corresponding to the input `queue_name`.
     #[instrument(skip(self), err)]
-    pub async fn get_jobs_by_queue_name(&self, queue_name: String) -> ServiceResult<Vec<JobItem>> {
+    pub async fn get_jobs_by_queue_name(&self, queue_name: String) -> ApiResult<Vec<JobItem>> {
         let job_repo = self.bundle.job_repo();
         let queue_name_clone = queue_name.clone();
 
@@ -139,7 +139,7 @@ where
     }
 
     #[instrument(skip(self), err)]
-    pub async fn deactivate_job_by_id(&self, job_id: JobId) -> ServiceResult<JobId> {
+    pub async fn deactivate_job_by_id(&self, job_id: JobId) -> ApiResult<JobId> {
         let job_repo = self.bundle.job_repo();
 
         let result = self
@@ -162,7 +162,7 @@ where
     }
 
     #[instrument(skip(self), err)]
-    pub async fn deactivate_job_by_name(&self, job_name: String) -> ServiceResult<JobId> {
+    pub async fn deactivate_job_by_name(&self, job_name: String) -> ApiResult<JobId> {
         let job_repo = self.bundle.job_repo();
 
         let result = self
@@ -186,7 +186,7 @@ where
     }
 
     #[instrument(skip(self), err)]
-    pub async fn delete_job_by_id(&self, job_id: JobId) -> ServiceResult<JobId> {
+    pub async fn delete_job_by_id(&self, job_id: JobId) -> ApiResult<JobId> {
         let result = self
             .database
             .execute(move |tx| {
@@ -207,7 +207,7 @@ where
     }
 
     #[instrument(skip(self), err)]
-    pub async fn delete_job_by_name(&self, job_name: String) -> ServiceResult<JobId> {
+    pub async fn delete_job_by_name(&self, job_name: String) -> ApiResult<JobId> {
         let result = self
             .database
             .execute(|tx| {

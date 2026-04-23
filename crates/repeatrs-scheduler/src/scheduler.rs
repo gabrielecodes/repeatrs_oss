@@ -18,7 +18,7 @@ TODO:
 - add reconciliation task
  */
 
-use crate::ServiceResult;
+use crate::ApiResult;
 use crate::services::scheduling::SchedulingService;
 
 use repeatrs_bundles::JobSchedulerBundle;
@@ -65,7 +65,7 @@ where
 
     /// Scheduler loop. Schedules jobs when time is due and
     /// when jobs exit or are added/removed/deactivated.
-    pub async fn start(&self) -> ServiceResult<()> {
+    pub async fn start(&self) -> ApiResult<()> {
         let wakeup = self.wakeup.clone();
         let mut shutdown = self.shutdown.clone();
 

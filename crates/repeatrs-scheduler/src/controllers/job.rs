@@ -60,10 +60,9 @@ where
         Span::current().record("job_name", &req.job_name);
         Span::current().record("queue_name", &req.queue_name);
 
-        let job_def = NewJob::try_from(req)
-            .map_status_error(|| format!("Invalid job definition for job {}", &req.job_name))?;
+        let job_request = NewJobInput::try_from(req).map_status_error("Invalid input")?;
 
-        let result = self.service.add_job(job_def).await;
+        let result = self.service.add_job(job_request).await;
 
         match result {
             Ok(job_id) => {
@@ -191,11 +190,21 @@ where
     }
 }
 
-/// NewType used to instantiate a `NewJob`
-struct NewJobRequest(NewJob);
+/// Represents the information needed to validate and instantiate a [`NewJob`]
+pub struct NewJobInput(NewJob);
 
-/// Transfer `Job` type used for input validation at the controller layer.
-impl TryFrom<AddJobRequest> for NewJobRequest {
+impl NewJobInput {
+    pub fn new(job_info: NewJob) -> Self {
+        Self(job_info)
+    }
+
+    /// Consumes this object and returns its inner value
+    pub fn inner(self) -> NewJob {
+        self.0
+    }
+}
+
+impl TryFrom<AddJobRequest> for NewJobInput {
     type Error = ApiError;
 
     //TODO: missing checks
@@ -211,22 +220,21 @@ impl TryFrom<AddJobRequest> for NewJobRequest {
             Some(value.args.join(" "))
         };
 
-        let def = NewJob {
-            job_name: value.job_name,
+        let new_job = NewJob {
+            job_name: job_name,
             description: value.description,
-            schedule: schedule,
+            schedule,
             options: value.options,
             image_name: value.image_name,
             command: value.command,
-            args: value.args,
+            args,
             max_retries: value.max_retries,
-            status: value.status,
             priority: value.priority,
-            queue_name: value.queue_name,
+            queue_name: queue_name,
             max_concurrency: value.max_concurrency,
             timeout_seconds: value.timeout_seconds,
         };
 
-        Ok(def)
+        Ok(NewJobInput::new(new_job))
     }
 }

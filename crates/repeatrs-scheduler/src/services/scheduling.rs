@@ -1,5 +1,5 @@
-use crate::error::ToServiceError;
-use crate::{ServiceResult, err_ctx};
+use crate::error::ToApiError;
+use crate::{ApiResult, err_ctx};
 use repeatrs_bundles::JobSchedulerBundle;
 use repeatrs_domain::{
     JobOperations, JobRunOperations, JobScheduleStateOperations, NewJobRun, NewJobScheduleState,
@@ -33,7 +33,7 @@ where
     }
 
     #[instrument(skip_all)]
-    pub async fn dispatch_due_jobs(&self) -> ServiceResult<()> {
+    pub async fn dispatch_due_jobs(&self) -> ApiResult<()> {
         let job_repo = self.bundle.job_repo();
         let job_runs_repo = self.bundle.job_runs_repo();
         let job_schedule_state_repo = self.bundle.job_schedule_state_repo();

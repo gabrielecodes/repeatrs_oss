@@ -1,9 +1,11 @@
 //! Handles incoming gRPC requests.
 
-use crate::error::{ApiError, ToStatusError};
+use crate::error::{ApiError, ContainerOptionsError, ToStatusError, ValidationError};
 use crate::services::job::JobService;
 use repeatrs_bundles::JobBundle;
-use repeatrs_domain::{JobId, NewJob, QueueId};
+use repeatrs_domain::{
+    CommandArgs, ContainerOptions, ImageName, JobId, NewJob, QueueId, RunCommand,
+};
 use repeatrs_proto::repeatrs::grpc_job_service_server::GrpcJobService;
 use repeatrs_proto::repeatrs::job_identifier_request::JobIdentifier;
 use repeatrs_proto::repeatrs::queue_identifier_request::QueueIdentifier;
@@ -18,6 +20,9 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 use tonic::{Request, Response, Status};
 use tracing::{Span, error, field::Empty};
+
+const FORBIDDEN_CONTAINER_OPTIONS: [&str; 4] =
+    ["--privileged", "--net=host", "cap-add=ALL", "-v /:"];
 
 pub struct JobController<E, B, D>
 where
@@ -191,9 +196,9 @@ where
 }
 
 /// Represents the information needed to validate and instantiate a [`NewJob`]
-pub struct NewJobInput(NewJob);
+pub struct NewJobData(NewJob);
 
-impl NewJobInput {
+impl NewJobData {
     pub fn new(job_info: NewJob) -> Self {
         Self(job_info)
     }
@@ -204,7 +209,7 @@ impl NewJobInput {
     }
 }
 
-impl TryFrom<AddJobRequest> for NewJobInput {
+impl TryFrom<AddJobRequest> for NewJobData {
     type Error = ApiError;
 
     //TODO: missing checks
@@ -220,13 +225,18 @@ impl TryFrom<AddJobRequest> for NewJobInput {
             Some(value.args.join(" "))
         };
 
+        let options: ContainerOptions = value.options.try_into()?;
+        let image_name: ImageName = value.image_name.try_into()?;
+        let command: RunCommand = value.command.try_into()?;
+        let args: CommandArgs = value.command.try_into()?;
+
         let new_job = NewJob {
             job_name: job_name,
             description: value.description,
             schedule,
-            options: value.options,
-            image_name: value.image_name,
-            command: value.command,
+            options,
+            image_name,
+            command,
             args,
             max_retries: value.max_retries,
             priority: value.priority,
@@ -236,5 +246,54 @@ impl TryFrom<AddJobRequest> for NewJobInput {
         };
 
         Ok(NewJobInput::new(new_job))
+    }
+}
+
+impl TryFrom<String> for ContainerOptions {
+    type Error = ValidationError;
+
+    fn try_from(value: Vec<String>) -> Result<Self, Self::Error> {
+        let mut map = std::collections::HashMap::new();
+        let mut iter = value.into_iter().peekable();
+
+        while let Some(arg) = iter.next() {
+            if arg.starts_with('-') {
+                if arg.contains('=') {
+                    let (key, val) = arg.split_once('=')?;
+
+                    if val.is_empty() {
+                        let err = ContainerOptionsError::MissingValue(key.into());
+                        return Err(ValidationError::InvalidContainerOptions(err));
+                    }
+
+                    map.insert(key.to_string(), val.to_string());
+                } else {
+                    let key = arg;
+                    let has_value = iter.peek().map_or(false, |next| !next.starts_with('-'));
+
+                    if has_value {
+                        map.insert(key, iter.next().unwrap());
+                    } else {
+                        map.insert(key, "true".to_string());
+                    }
+                }
+            } else {
+                let err = ContainerOptionsError::UnexpectedPositional(arg.into());
+                return Err(ValidationError::InvalidContainerOption(err));
+            }
+        }
+
+        map
+    }
+}
+
+impl TryFrom<String> for ImageName {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() || !value.contains('/') && !value.contains(':') {
+            return Err(ValidationError::InvalidImageName(value));
+        }
+        Ok(Self(value))
     }
 }

@@ -1,12 +1,10 @@
-use crate::{
-    IsId, QueueId,
-    error::{DomainError, ValidationError},
-};
+use crate::{IsId, QueueId};
 
 use chrono::{DateTime, Duration, Utc};
 use croner::Cron;
 use repeatrs_proto::repeatrs::JobItem;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
 
@@ -311,68 +309,9 @@ impl ImageName {
     }
 }
 
-impl TryFrom<String> for ImageName {
-    type Error = ValidationError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.trim().is_empty() || !value.contains('/') && !value.contains(':') {
-            return Err(ValidationError::InvalidImageName);
-        }
-        Ok(Self(value))
-    }
-}
-
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
-pub enum ContainerOptions {
-    /// --read-only
-    ReadOnly,
-    /// --rm
-    Remove,
-    /// --memory=<limit>
-    MemoryLimit(String),
-    /// Catch-all for any other flag we haven't explicitly modeled yet
-    Custom(String),
-}
-
-impl ContainerOptions {
-    /// Returns the container options as string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for ContainerOptions {
-    fn from(value: String) -> Self {
-        let flag = value.replace("--", "");
-
-        match flag.as_ref() {
-            "rm" => ContainerOptions::Remove,
-            rest => Self::Custom(rest.to_string()),
-        }
-    }
-}
-
-impl TryFrom<String> for ContainerOptions {
-    type Error = ValidationError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let forbidden = ["--privileged", "--net=host", "cap-add=ALL", "-v /:"];
-
-        for flag in forbidden {
-            if value.contains(flag) {
-                return Err(ValidationError::InvalidContainerOptions);
-            }
-        }
-
-        // Enforce resource limits if they are missing
-        if !value.contains("--memory") {
-            return Err(ValidationError::InvalidContainerOptions);
-        }
-
-        Ok(Self(value))
-    }
-}
+pub struct ContainerOptions(HashMap<String, String>);
 
 #[derive(Debug)]
 pub struct RunCommand(String);
@@ -385,14 +324,7 @@ impl RunCommand {
 }
 
 #[derive(Debug)]
-pub struct CommandArgs(String);
-
-impl CommandArgs {
-    /// Returns the run arguments as string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+pub struct CommandArgs(HashMap<String, String>);
 
 /// Represents the information needed to instantiate a new job.
 #[derive(Debug)]

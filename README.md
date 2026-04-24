@@ -4,44 +4,7 @@
 
 Repeat.rs is a Zero-Trust Orchestration Layer that bridges AI with durable, asynchronous, and auditable jobs. It’s the difference between an AI that talks about doing work and a system that guarantees the work is done, auditable, repeated, and recovered—no matter the scale
 
-Repeat.rs is designed to be a high-performance, decentralized job scheduler built on a worker-pull architecture. It's built for massive concurrency, agile scaling, and efficient workload management. It provides the structured environment and reliable execution guarantees that AI agents need to perform tasks effectively, safely, and at scale.
-
-Repeat.rs acts as the Control Plane that bridges the gap between the AI’s intent and the physical execution environment:
-
-1. **Tool registry**: the user defines **tools** as units of a workflow. The tool is defined It adheres to an MCP schema defining functions, inputs and outputs.
-
-2. **Jobs execution**: jobs are tool executions placed in a queue and run in isolated environments by distributed workers. The worker pool can be scaled up or down to balance performance and cost efficiently.
-
-3. **Workflow execution**: workflows are user-defined sequences of jobs. The user can ask AI to execute a workflow or to propose a new workflow (which the user has to approve before execution) starting from predefined tasks.
-
-4. **Reliability and Asynchronicity**: for long-running user requests, the agent submits a workflow or job, get an ID back immediately, and reports back to the user when the job is complete.
-
-**Example tool call**:
-
-```json
-{
-  "tool_id": "enterprise-sql-runner",
-  "version": "1.2.0",
-  "mcp_schema": {
-    "name": "execute_query",
-    "description": "Executes read-only SQL queries against the production data warehouse.",
-    "arguments": {
-      "type": "object",
-      "properties": {
-        "query": { "type": "string", "description": "The SQL statement to run." },
-        "limit": { "type": "integer", "default": 100 }
-      },
-      "required": ["query"]
-    }
-  },
-  "runtime": {
-    "type": "wasm",
-    "module_uri": "s3://registry/sql-runner-v1.2.wasm",
-    "env_vars": ["DB_CONNECTION_STRING_REF"],
-    "resource_limits": { "cpu": "0.5", "memory": "128Mi" }
-  }
-}
-```
+Repeat.rs is designed to be a high-performance, decentralized job scheduler built on a worker-pull architecture. It's built for massive concurrency, agile scaling, and efficient workload management. It provides the structured environment and reliable execution guarantees that workflows need to perform tasks effectively, safely, and at scale.
 
 ## Features
 

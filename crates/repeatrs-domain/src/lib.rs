@@ -27,7 +27,10 @@ mod job_schedule_state;
 mod queue;
 mod worker;
 
-pub use job::{Job, JobId, JobOperations, JobStatus, NewJob};
+pub use job::{
+    CommandArgs, ContainerOptions, ImageName, Job, JobId, JobOperations, JobStatus, NewJob,
+    RunCommand,
+};
 pub use job_queue::{HasSubject, JobQueueOperations};
 pub use job_runs::{ExitStatus, JobRun, JobRunId, JobRunOperations, JobRunStatus, NewJobRun};
 pub use job_schedule_state::{JobScheduleState, JobScheduleStateOperations, NewJobScheduleState};

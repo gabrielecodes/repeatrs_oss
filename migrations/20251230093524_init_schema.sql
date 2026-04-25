@@ -36,7 +36,7 @@ CREATE TYPE queue_status AS ENUM ('INACTIVE', 'ACTIVE');
 CREATE TABLE
     IF NOT EXISTS queues (
         queue_id      UUID PRIMARY KEY DEFAULT uuidv7(),
-        queue_name    TEXT UNIQUE NOT NULL,  -- NATS subject
+        queue_name    TEXT UNIQUE NOT NULL,
         status        queue_status NOT NULL DEFAULT 'ACTIVE',
         capacity      INTEGER NOT NULL DEFAULT 1000,
         used_capacity INTEGER NOT NULL DEFAULT 0,
@@ -64,12 +64,12 @@ CREATE TABLE
         image_name               TEXT NOT NULL,
         command                  TEXT,
         args                     TEXT,
-        max_retries              INTEGER NOT NULL DEFAULT 3,
+        max_retries              INTEGER NOT NULL,
         status                   job_status NOT NULL DEFAULT 'ACTIVE',
-        priority                 INTEGER NOT NULL DEFAULT 1,        
+        priority                 INTEGER NOT NULL,
         queue_id                 UUID NOT NULL REFERENCES queues (queue_id),
-        max_concurrency          INTEGER NOT NULL DEFAULT 0,
-        timeout_seconds          INTEGER NOT NULL DEFAULT 1200,
+        max_concurrency          INTEGER NOT NULL,
+        timeout_seconds          INTEGER NOT NULL,
         created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );

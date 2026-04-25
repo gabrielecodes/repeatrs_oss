@@ -10,13 +10,12 @@
 //! Domain-Specific Validation
 //! - Custom Formats
 //! - Time Rules
-//!
 
 use config::ConfigError;
-// use repeatrs_domain::error::DomainError;
-use croner::errors::CronError;
 use repeatrs_transaction::TransactionError;
 use std::fmt::Debug;
+
+use repeatrs_domain::ValidationError;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -44,39 +43,10 @@ pub enum ApiError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-}
 
-#[derive(Debug, thiserror::Error)]
-pub enum ValidationError {
-    #[error("Error parsing UUID: {0}")]
-    UuidValidation(#[from] uuid::Error),
-
-    #[error("invalid image name: {0}")]
-    InvalidImageName(String),
-
-    #[error(transparent)]
-    InvalidContainerOption(ContainerOptionsError),
-
-    #[error("invalid run command: {0}")]
-    InvalidRunCommand(String),
-
-    #[error("invalid command argument: {0}")]
-    InvalidRunArguments(String),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ContainerOptionsError {
-    #[error("Malformed argument '{0}': expected --key=value")]
-    MalformedArgument(String),
-
-    #[error("Missing value for argument '{0}'")]
-    MissingValue(String),
-
-    #[error("Unexpected positional argument '{0}'")]
-    UnexpectedPositional(String),
-
-    #[error("Domain error: {0}")]
-    Domain(#[from] domain::DomainError),
+    // --- Validation ---
+    #[error("Validation error")]
+    Validation(#[from] ValidationError),
 }
 
 pub trait ToStatusError<T> {

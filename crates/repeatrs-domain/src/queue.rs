@@ -1,6 +1,6 @@
 use std::{fmt::Display, ops::Deref, str::FromStr};
 
-use crate::IsId;
+use crate::{IsId, ValidationError};
 
 use chrono::{DateTime, Utc};
 use prost_types::Timestamp;
@@ -44,7 +44,7 @@ impl FromStr for QueueStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Eq)]
-pub struct QueueId(pub Uuid);
+pub struct QueueId(Uuid);
 impl IsId for QueueId {}
 
 impl From<Uuid> for QueueId {
@@ -91,8 +91,26 @@ impl QueueId {
     }
 }
 
+impl TryFrom<&str> for QueueId {
+    type Error = ValidationError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let uid = Uuid::from_str(value)?;
+        Ok(Self(uid))
+    }
+}
+
+impl TryFrom<String> for QueueId {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let uid = Uuid::from_str(&value)?;
+        Ok(Self(uid))
+    }
+}
+
 pub struct Queue {
-    /// Unique identifier for this queue
+    /// Unique queue identifier
     pub queue_id: QueueId,
 
     /// The name of this queue

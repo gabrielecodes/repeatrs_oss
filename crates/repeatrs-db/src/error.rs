@@ -1,7 +1,5 @@
 //! Infrastructure related errors
 
-use repeatrs_domain::error::DomainError;
-
 #[derive(thiserror::Error, Debug)]
 pub enum DbError {
     #[error("{0}")]
@@ -12,12 +10,6 @@ pub enum DbError {
 
     #[error("{0}")]
     Internal(String),
-}
-
-impl From<DbError> for DomainError {
-    fn from(_: DbError) -> Self {
-        DomainError::Database
-    }
 }
 
 // impl std::fmt::Display for DbError {

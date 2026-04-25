@@ -1,10 +1,13 @@
 //! Handles incoming gRPC requests.
 
-use crate::error::{ApiError, ContainerOptionsError, ToStatusError, ValidationError};
+use crate::error::{ApiError, ToStatusError};
 use crate::services::job::JobService;
+
+use croner::Cron;
 use repeatrs_bundles::JobBundle;
 use repeatrs_domain::{
-    CommandArgs, ContainerOptions, ImageName, JobId, NewJob, QueueId, RunCommand,
+    CommandArgs, ContainerOptions, ImageName, JobId, QueueId, RunCmd, SanitizedString,
+    ValidationError,
 };
 use repeatrs_proto::repeatrs::grpc_job_service_server::GrpcJobService;
 use repeatrs_proto::repeatrs::job_identifier_request::JobIdentifier;
@@ -55,7 +58,7 @@ where
     D: for<'tx> DatabaseContextProvider<'tx, E> + Send + Sync + 'static,
     E: Sync + Send + 'static,
 {
-    #[tracing::instrument(name = "add_job", skip_all, err, fields(job_name = Empty, queue_name = Empty))]
+    #[tracing::instrument(name = "add_job", skip_all, err, fields(job_name = Empty, queue_id = Empty))]
     async fn add_job(
         &self,
         request: Request<AddJobRequest>,
@@ -63,9 +66,9 @@ where
         let req = request.into_inner();
 
         Span::current().record("job_name", &req.job_name);
-        Span::current().record("queue_name", &req.queue_name);
+        Span::current().record("queue_id", &req.queue_id);
 
-        let job_request = NewJobInput::try_from(req).map_status_error("Invalid input")?;
+        let job_request = CreateJobCommand::try_from(req).map_status_error("Invalid input")?;
 
         let result = self.service.add_job(job_request).await;
 
@@ -195,105 +198,83 @@ where
     }
 }
 
-/// Represents the information needed to validate and instantiate a [`NewJob`]
-pub struct NewJobData(NewJob);
+#[derive(Debug, Clone)]
+pub struct CreateJobCommand {
+    /// Unique job name
+    pub job_name: SanitizedString,
 
-impl NewJobData {
-    pub fn new(job_info: NewJob) -> Self {
-        Self(job_info)
-    }
+    /// Unique queue identifier
+    pub queue_id: QueueId,
 
-    /// Consumes this object and returns its inner value
-    pub fn inner(self) -> NewJob {
-        self.0
-    }
+    /// The job description
+    pub description: Option<String>,
+
+    /// schedule of the cronjob or execution time
+    pub schedule: Cron,
+
+    /// Options for running the container
+    pub run_options: ContainerOptions,
+
+    /// Image name as <optional_registry>/<image_name>:tag
+    pub image_name: ImageName,
+
+    /// The command to run the container
+    pub run_command: RunCmd,
+
+    /// Arguments for the command
+    pub command_args: CommandArgs,
+
+    /// Retry the job if last execution failed
+    pub max_retries: Option<i32>,
+
+    /// Job priority
+    pub priority: Option<i32>,
+
+    /// Maximum number of identical jobs running concurrently
+    pub max_concurrency: Option<i32>,
+
+    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
+    pub timeout_seconds: Option<i32>,
 }
 
-impl TryFrom<AddJobRequest> for NewJobData {
+impl TryFrom<AddJobRequest> for CreateJobCommand {
     type Error = ApiError;
 
-    //TODO: missing checks
     fn try_from(value: AddJobRequest) -> core::result::Result<Self, Self::Error> {
-        let schedule = croner::Cron::from_str(&value.schedule)?;
+        let schedule = croner::Cron::from_str(&value.schedule).map_err(|e| {
+            let err = ValidationError::InvalidCron(e);
+            ApiError::Validation(err)
+        })?;
 
-        let job_name = value.job_name.replace(" ", "_");
-        let queue_name = value.queue_name.replace(" ", "_");
+        let queue_id = QueueId::try_from(value.queue_id)?;
 
-        let args = if value.args.is_empty() {
-            None::<String>
-        } else {
-            Some(value.args.join(" "))
-        };
+        let job_name = SanitizedString::new(value.job_name)?;
 
-        let options: ContainerOptions = value.options.try_into()?;
+        let input_options = value.options.unwrap_or_default();
+        let run_options: ContainerOptions = input_options.try_into()?;
+
         let image_name: ImageName = value.image_name.try_into()?;
-        let command: RunCommand = value.command.try_into()?;
-        let args: CommandArgs = value.command.try_into()?;
 
-        let new_job = NewJob {
-            job_name: job_name,
+        let run_command = RunCmd::new(value.command);
+
+        let input_args = value.args.unwrap_or_default();
+        let command_args: CommandArgs = input_args.try_into()?;
+
+        let new_job = CreateJobCommand {
+            job_name,
+            queue_id,
             description: value.description,
             schedule,
-            options,
+            run_options,
             image_name,
-            command,
-            args,
+            run_command,
+            command_args,
             max_retries: value.max_retries,
             priority: value.priority,
-            queue_name: queue_name,
             max_concurrency: value.max_concurrency,
             timeout_seconds: value.timeout_seconds,
         };
 
-        Ok(NewJobInput::new(new_job))
-    }
-}
-
-impl TryFrom<String> for ContainerOptions {
-    type Error = ValidationError;
-
-    fn try_from(value: Vec<String>) -> Result<Self, Self::Error> {
-        let mut map = std::collections::HashMap::new();
-        let mut iter = value.into_iter().peekable();
-
-        while let Some(arg) = iter.next() {
-            if arg.starts_with('-') {
-                if arg.contains('=') {
-                    let (key, val) = arg.split_once('=')?;
-
-                    if val.is_empty() {
-                        let err = ContainerOptionsError::MissingValue(key.into());
-                        return Err(ValidationError::InvalidContainerOptions(err));
-                    }
-
-                    map.insert(key.to_string(), val.to_string());
-                } else {
-                    let key = arg;
-                    let has_value = iter.peek().map_or(false, |next| !next.starts_with('-'));
-
-                    if has_value {
-                        map.insert(key, iter.next().unwrap());
-                    } else {
-                        map.insert(key, "true".to_string());
-                    }
-                }
-            } else {
-                let err = ContainerOptionsError::UnexpectedPositional(arg.into());
-                return Err(ValidationError::InvalidContainerOption(err));
-            }
-        }
-
-        map
-    }
-}
-
-impl TryFrom<String> for ImageName {
-    type Error = ValidationError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.trim().is_empty() || !value.contains('/') && !value.contains(':') {
-            return Err(ValidationError::InvalidImageName(value));
-        }
-        Ok(Self(value))
+        Ok(new_job)
     }
 }

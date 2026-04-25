@@ -251,7 +251,7 @@ impl From<JobRun> for JobRunRow {
             job_run_id: value.job_run_id().into(),
             job_id: value.job_id().into(),
             queue_id: value.queue_id().into(),
-            worker_id: worker_id,
+            worker_id,
             claimed_at: value.claimed_at(),
             status: value.status().into(),
             scheduled_time: value.scheduled_time().to_owned(),
@@ -259,7 +259,7 @@ impl From<JobRun> for JobRunRow {
             started_at: value.started_at(),
             ended_at: value.ended_at(),
             exit_code: code,
-            error: error,
+            error,
             created_at: value.created_at().to_owned(),
             updated_at: value.updated_at().to_owned(),
         }

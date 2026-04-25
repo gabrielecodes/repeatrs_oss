@@ -27,9 +27,12 @@ mod job_schedule_state;
 mod queue;
 mod worker;
 
+use std::ops::Deref;
+
+pub use error::ValidationError;
 pub use job::{
-    CommandArgs, ContainerOptions, ImageName, Job, JobId, JobOperations, JobStatus, NewJob,
-    RunCommand,
+    CommandArgs, ContainerOptions, ContainerRunCommand, ImageName, Job, JobId, JobIdentity,
+    JobOperations, JobOptions, JobResponse, JobStatus, RunCmd, ToOwnedString,
 };
 pub use job_queue::{HasSubject, JobQueueOperations};
 pub use job_runs::{ExitStatus, JobRun, JobRunId, JobRunOperations, JobRunStatus, NewJobRun};
@@ -42,3 +45,39 @@ use uuid::Uuid;
 pub trait IsId: From<Uuid> + Into<Uuid> + Copy + PartialEq {}
 
 pub type DomainResult<T> = core::result::Result<T, error::DomainError>;
+
+#[derive(Debug, Clone)]
+pub struct SanitizedString(String);
+
+impl SanitizedString {
+    pub fn new(str: String) -> Result<Self, ValidationError> {
+        let sanitized = Self::sanitize(str)?;
+        Ok(Self(sanitized))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn sanitize(mut val: String) -> Result<String, ValidationError> {
+        if val
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == ' ' || c == '_')
+        {
+            if val.contains(' ') {
+                val = val.replace(' ', "_");
+            }
+            Ok(val)
+        } else {
+            Err(ValidationError::InvalidCharacters(val))
+        }
+    }
+}
+
+impl Deref for SanitizedString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}

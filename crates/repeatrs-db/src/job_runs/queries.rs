@@ -19,9 +19,8 @@ where
         return Ok(Vec::new());
     }
 
-    let job_ids: Vec<DbJobId> = job_info.into_iter().map(|j| j.job_id().into()).collect();
-    let next_run_times: Vec<DateTime<Utc>> =
-        job_info.into_iter().map(|j| j.scheduled_time()).collect();
+    let job_ids: Vec<DbJobId> = job_info.iter().map(|j| j.job_id().into()).collect();
+    let next_run_times: Vec<DateTime<Utc>> = job_info.iter().map(|j| j.scheduled_time()).collect();
 
     let run_ids: Vec<DbJobRunId> = sqlx::query!(
         r#"

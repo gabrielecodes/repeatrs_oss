@@ -10,7 +10,7 @@ use crate::{DbResult, error::DbError, queues::DbQueueId};
 
 use chrono::{DateTime, Utc};
 use croner::Cron;
-use repeatrs_domain::{Job, JobId, JobOperations, JobStatus, NewJob, QueueId};
+use repeatrs_domain::{Job, JobId, JobOperations, JobResponse, JobStatus, QueueId};
 use sqlx::{Postgres, Transaction, Type};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -24,7 +24,7 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
     async fn add_job(
         &self,
         tx: &mut Transaction<'e, Postgres>,
-        job: &NewJob,
+        job: &Job,
         queue_id: &QueueId,
     ) -> DbResult<JobId> {
         let job_id = add_job(&mut **tx, job, &queue_id.into()).await?;
@@ -37,10 +37,10 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
         &self,
         tx: &mut Transaction<'e, Postgres>,
         job_id: &JobId,
-    ) -> DbResult<Job> {
+    ) -> DbResult<JobResponse> {
         let job_row = get_job_by_id(&mut **tx, &job_id.into()).await?;
 
-        let job: Job = Job::try_from(job_row)?;
+        let job: JobResponse = JobResponse::try_from(job_row)?;
 
         Ok(job)
     }
@@ -50,10 +50,10 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
         &self,
         tx: &mut Transaction<'e, Postgres>,
         job_name: &str,
-    ) -> DbResult<Job> {
+    ) -> DbResult<JobResponse> {
         let job_row = get_job_by_name(&mut **tx, job_name).await?;
 
-        let job: Job = Job::try_from(job_row)?;
+        let job: JobResponse = JobResponse::try_from(job_row)?;
 
         Ok(job)
     }
@@ -62,9 +62,9 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
         &self,
         tx: &mut Transaction<'e, Postgres>,
         queue_id: &QueueId,
-    ) -> DbResult<Vec<Job>> {
+    ) -> DbResult<Vec<JobResponse>> {
         let job_rows = get_jobs_by_queue_id(&mut **tx, &queue_id.into()).await?;
-        let jobs: DbResult<Vec<Job>> = job_rows.into_iter().map(|j| j.try_into()).collect();
+        let jobs: DbResult<Vec<JobResponse>> = job_rows.into_iter().map(|j| j.try_into()).collect();
 
         jobs
     }
@@ -73,10 +73,10 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
         &self,
         tx: &mut Transaction<'e, Postgres>,
         queue_name: &str,
-    ) -> DbResult<Vec<Job>> {
+    ) -> DbResult<Vec<JobResponse>> {
         let jobs = get_jobs_by_queue_name(&mut **tx, queue_name).await?;
 
-        let jobs: DbResult<Vec<Job>> = jobs.into_iter().map(|j| j.try_into()).collect();
+        let jobs: DbResult<Vec<JobResponse>> = jobs.into_iter().map(|j| j.try_into()).collect();
 
         jobs
     }
@@ -135,10 +135,10 @@ impl<'e> JobOperations<Transaction<'e, Postgres>> for PgJobRepository {
     //     Ok(get_earliest_deadline(&mut **tx).await)
     // }
 
-    async fn get_due_jobs(&self, tx: &mut Transaction<'e, Postgres>) -> DbResult<Vec<Job>> {
+    async fn get_due_jobs(&self, tx: &mut Transaction<'e, Postgres>) -> DbResult<Vec<JobResponse>> {
         let jobs = get_due_jobs(&mut **tx).await?;
 
-        let jobs: DbResult<Vec<Job>> = jobs.into_iter().map(|j| j.try_into()).collect();
+        let jobs: DbResult<Vec<JobResponse>> = jobs.into_iter().map(|j| j.try_into()).collect();
 
         jobs
     }
@@ -216,49 +216,6 @@ impl From<&JobStatus> for DbJobStatus {
     }
 }
 
-/// Represents the information needed to instantiate a new job.
-#[derive(Debug)]
-pub struct CreateJobInput {
-    /// Unique job name
-    pub job_name: String,
-
-    /// The job description
-    pub description: Option<String>,
-
-    /// schedule of the cronjob or execution time
-    pub schedule: String,
-
-    /// Options for running the container
-    pub options: Option<String>,
-
-    /// Image name as <optional_registry>/<image_name>:tag
-    pub image_name: String,
-
-    /// The command to run the container
-    pub command: Option<String>,
-
-    /// Arguments for the command
-    pub args: Option<String>,
-
-    /// Retry the job if last execution failed
-    pub max_retries: i32,
-
-    /// Current status of the job
-    pub status: JobStatus,
-
-    /// Job priority
-    pub priority: Option<i32>,
-
-    /// Identifier of the queue this job belongs to
-    pub queue_name: String,
-
-    /// Maximum number of identical jobs running concurrently
-    pub max_concurrency: Option<i32>,
-
-    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
-    pub timeout_seconds: Option<i32>,
-}
-
 #[derive(Debug)]
 struct JobRow {
     /// Unique ID of the job, primary key
@@ -322,7 +279,7 @@ impl JobRow {
     }
 }
 
-impl TryFrom<JobRow> for Job {
+impl TryFrom<JobRow> for JobResponse {
     type Error = DbError;
 
     fn try_from(value: JobRow) -> Result<Self, Self::Error> {
@@ -332,13 +289,13 @@ impl TryFrom<JobRow> for Job {
             .timeout_seconds
             .map(|t| chrono::Duration::seconds(t as i64));
 
-        let job = Job::from_row(
+        let job = JobResponse::from_row(
             JobId::new(value.job_id().0),
             value.job_name,
             value.description,
             schedule,
             value.options,
-            value.image_name, // validate
+            value.image_name,
             value.command,
             value.args,
             value.max_retries,
@@ -356,17 +313,17 @@ impl TryFrom<JobRow> for Job {
     }
 }
 
-impl From<&Job> for JobRow {
-    fn from(value: &Job) -> Self {
+impl From<&JobResponse> for JobRow {
+    fn from(value: &JobResponse) -> Self {
         JobRow {
             job_id: DbJobId(value.job_id().inner()),
             job_name: value.job_name().to_owned(),
             description: value.description().map(ToString::to_string),
             schedule: value.schedule().to_string(),
-            options: value.options().map(ToString::to_string),
+            options: value.image_options().map(ToString::to_string),
             image_name: value.image_name().to_owned(),
             command: value.command().map(ToString::to_string),
-            args: value.args().map(ToString::to_string),
+            args: value.command_args().map(ToString::to_string),
             max_retries: value.max_retries(),
             status: value.status().into(),
             priority: value.priority(),
@@ -382,8 +339,8 @@ impl From<&Job> for JobRow {
     }
 }
 
-impl From<Job> for JobRow {
-    fn from(value: Job) -> JobRow {
+impl From<JobResponse> for JobRow {
+    fn from(value: JobResponse) -> JobRow {
         JobRow::from(&value)
     }
 }

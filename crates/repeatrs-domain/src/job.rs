@@ -1,10 +1,12 @@
-use crate::{IsId, QueueId};
+use crate::error::{ContainerOptionsError, ValidationError};
+use crate::{IsId, QueueId, SanitizedString};
 
 use chrono::{DateTime, Duration, Utc};
 use croner::Cron;
 use repeatrs_proto::repeatrs::JobItem;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
 
@@ -98,10 +100,346 @@ impl From<JobStatus> for String {
     }
 }
 
-/// A general representation of a job used to represent a job already
-/// persisted in the database.
+pub trait ToOwnedString {
+    fn as_map(&self) -> &HashMap<String, String>;
+
+    fn to_owned_string(&self) -> String {
+        let mut buf = String::new();
+        let mut first = true;
+
+        for (k, v) in self.as_map() {
+            if !first {
+                buf.push(' ');
+            }
+            first = false;
+
+            write!(&mut buf, "{}={}", k, v).unwrap();
+        }
+
+        buf
+    }
+}
+
+fn try_string_to_hashmap(value: String) -> Result<HashMap<String, String>, ValidationError> {
+    let mut map = std::collections::HashMap::new();
+    let mut iter = value.split(" ").peekable();
+
+    while let Some(arg) = iter.next() {
+        if arg.starts_with('-') {
+            if arg.contains('=') {
+                let (key, val) = arg.split_once('=').ok_or({
+                    let err = ContainerOptionsError::MalformedArgument(arg.to_string());
+                    ValidationError::InvalidContainerOption(err)
+                })?;
+
+                if val.is_empty() {
+                    let err = ContainerOptionsError::MissingValue(key.into());
+                    return Err(ValidationError::InvalidContainerOption(err));
+                }
+
+                map.insert(key.to_string(), val.to_string());
+            } else {
+                let key = arg;
+                let has_value = iter.peek().is_some_and(|next| !next.starts_with('-'));
+
+                if has_value {
+                    map.insert(key.to_string(), iter.next().unwrap().to_string());
+                } else {
+                    map.insert(key.to_string(), "true".to_string());
+                }
+            }
+        } else {
+            let err = ContainerOptionsError::UnexpectedPositional(arg.into());
+            return Err(ValidationError::InvalidContainerOption(err));
+        }
+    }
+
+    Ok(map)
+}
+
+#[derive(Debug, Clone)]
+pub struct ImageName(String);
+
+impl ImageName {
+    pub fn new(name: &str) -> Self {
+        Self(name.to_string())
+    }
+
+    /// Returns the image name as string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for ImageName {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() || !value.contains('/') && !value.contains(':') {
+            return Err(ValidationError::InvalidImageName(value));
+        }
+        Ok(Self(value))
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ContainerOptions(HashMap<String, String>);
+
+impl ContainerOptions {
+    pub fn new(map: HashMap<String, String>) -> Self {
+        Self(map)
+    }
+}
+
+impl ToOwnedString for ContainerOptions {
+    fn as_map(&self) -> &HashMap<String, String> {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for ContainerOptions {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let map = try_string_to_hashmap(value)?;
+
+        Ok(ContainerOptions::new(map))
+    }
+}
+
+/// Represents the command given to the entrypoint of the container.
+/// If `None`, it is assumed that the image already defines a `CMD`
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunCmd(Option<String>);
+
+impl RunCmd {
+    pub fn new(command: Option<String>) -> Self {
+        Self(command)
+    }
+
+    /// Returns the run command. The command can be `None` in which
+    /// case it is assumed that the image already defines a `CMD`
+    pub fn as_str(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct CommandArgs(HashMap<String, String>);
+
+impl CommandArgs {
+    pub fn new(args: HashMap<String, String>) -> Self {
+        Self(args)
+    }
+}
+
+impl ToOwnedString for CommandArgs {
+    fn as_map(&self) -> &HashMap<String, String> {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for CommandArgs {
+    type Error = ValidationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let map = try_string_to_hashmap(value)?;
+
+        Ok(CommandArgs::new(map))
+    }
+}
+
+/// Informations related to the identity of the job
+#[derive(Debug)]
+pub struct JobIdentity {
+    /// Unique job name
+    job_name: SanitizedString,
+
+    /// The job description
+    description: Option<String>,
+
+    /// Identifier of the queue this job belongs to
+    queue_id: QueueId,
+}
+
+impl JobIdentity {
+    pub fn new(job_name: SanitizedString, description: Option<String>, queue_id: QueueId) -> Self {
+        Self {
+            job_name,
+            description,
+            queue_id,
+        }
+    }
+}
+
+/// Options regarding the job execution
+#[derive(Debug)]
+pub struct JobOptions {
+    /// schedule of the cronjob or execution time
+    schedule: Cron,
+
+    /// Retry the job if last execution failed
+    max_retries: Option<i32>,
+
+    /// Job priority
+    priority: Option<i32>,
+
+    /// Maximum number of identical jobs running concurrently
+    max_concurrency: Option<i32>,
+
+    /// A hard limit on the duration of the job, after which the job is terminated.
+    timeout_seconds: Option<Duration>,
+}
+
+impl JobOptions {
+    pub fn new(
+        schedule: Cron,
+        max_retries: Option<i32>,
+        priority: Option<i32>,
+        max_concurrency: Option<i32>,
+        timeout_seconds: Option<Duration>,
+    ) -> Self {
+        Self {
+            schedule,
+            max_retries,
+            priority,
+            max_concurrency,
+            timeout_seconds,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ContainerRunCommand {
+    /// Options for running the container
+    run_options: ContainerOptions,
+
+    /// Image name as <optional_registry>/<image_name>:tag
+    image_name: ImageName,
+
+    /// The command to run the container
+    cmd: RunCmd,
+
+    /// Arguments for the command
+    command_args: CommandArgs,
+}
+
+impl ContainerRunCommand {
+    pub fn new(
+        run_options: ContainerOptions,
+        image_name: ImageName,
+        cmd: RunCmd,
+        command_args: CommandArgs,
+    ) -> Self {
+        Self {
+            run_options,
+            image_name,
+            cmd,
+            command_args,
+        }
+    }
+}
+
+/// Represents a job. This type has validation logic and methods to
+/// enforce invariants before persisting the information in the database.
 #[derive(Debug)]
 pub struct Job {
+    /// Informations related to the identity of the job
+    identity: JobIdentity,
+
+    /// Informations needed to reconstruct the run command
+    run_command: ContainerRunCommand,
+
+    /// Informations related to how the job is run
+    options: JobOptions,
+}
+
+impl Job {
+    /// Applies a set of validation ruels and instantiates a new [`Job`].
+    pub fn new(
+        identity: JobIdentity,
+        run_command: ContainerRunCommand,
+        options: JobOptions,
+    ) -> Self {
+        // NOTE: use "new" instead of TryFrom: keep definition and enforcement
+        // of invariants in the domain layer and avoid coupling the service
+        // layer to the domain layer
+
+        Self {
+            identity,
+            run_command,
+            options,
+        }
+    }
+
+    pub fn identity(&self) -> &JobIdentity {
+        &self.identity
+    }
+
+    pub fn run_command(&self) -> &ContainerRunCommand {
+        &self.run_command
+    }
+
+    pub fn run_options(&self) -> &ContainerOptions {
+        &self.run_command.run_options
+    }
+
+    pub fn image_name(&self) -> &ImageName {
+        &self.run_command.image_name
+    }
+
+    pub fn command(&self) -> &RunCmd {
+        &self.run_command.cmd
+    }
+
+    pub fn job_name(&self) -> &SanitizedString {
+        &self.identity.job_name
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        self.identity.description.as_deref()
+    }
+
+    pub fn schedule(&self) -> &Cron {
+        &self.options.schedule
+    }
+
+    pub fn command_args(&self) -> &CommandArgs {
+        &self.run_command.command_args
+    }
+
+    pub fn options(&self) -> &JobOptions {
+        &self.options
+    }
+
+    pub fn max_retries(&self) -> i32 {
+        self.options.max_retries.unwrap_or(3)
+    }
+
+    pub fn priority(&self) -> i32 {
+        self.options.priority.unwrap_or(1)
+    }
+
+    pub fn queue_id(&self) -> &QueueId {
+        &self.identity.queue_id
+    }
+
+    pub fn max_concurrency(&self) -> i32 {
+        self.options.max_concurrency.unwrap_or(0)
+    }
+
+    pub fn timeout_seconds(&self) -> Duration {
+        // FIXME: fix default value
+        self.options
+            .timeout_seconds
+            .unwrap_or(Duration::minutes(7200))
+    }
+}
+
+/// Represents a job as retrieved from the database.
+#[derive(Debug)]
+pub struct JobResponse {
     /// Unique ID of the job, primary key
     job_id: JobId,
 
@@ -111,11 +449,32 @@ pub struct Job {
     /// The job description
     description: Option<String>,
 
+    /// Identifier of the queue this job belongs to
+    queue_id: QueueId,
+
+    /// Name of the queue this job belongs to
+    queue_name: String,
+
+    /// Status of the job
+    status: JobStatus,
+
     /// schedule of the cronjob or execution time
     schedule: Cron,
 
+    /// Retry the job if last execution failed
+    max_retries: i32,
+
+    /// Job priority
+    priority: i32,
+
+    /// Maximum number of identical jobs running concurrently
+    max_concurrency: i32,
+
+    /// A hard limit on the duration of the job, after which the job is terminated.
+    timeout_seconds: Option<Duration>,
+
     /// Options for running the container
-    options: Option<String>,
+    image_options: Option<String>,
 
     /// Image name as <optional_registry>/<image_name>:tag
     image_name: String,
@@ -124,28 +483,7 @@ pub struct Job {
     command: Option<String>,
 
     /// Arguments for the command
-    args: Option<String>,
-
-    /// Retry the job if last execution failed
-    max_retries: i32,
-
-    /// Current status of the job
-    status: JobStatus,
-
-    /// Job priority
-    priority: i32,
-
-    /// Identifier of the queue this job belongs to
-    queue_id: QueueId,
-
-    /// Name of the queue this job belongs to
-    queue_name: String,
-
-    /// Maximum number of identical jobs running concurrently
-    max_concurrency: i32,
-
-    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
-    timeout_seconds: Option<Duration>,
+    command_args: Option<String>,
 
     /// Job creation timestamp
     created_at: DateTime<Utc>,
@@ -154,7 +492,7 @@ pub struct Job {
     updated_at: DateTime<Utc>,
 }
 
-impl Job {
+impl JobResponse {
     // NOTE: we want to keep the fields of Job private and avoid
     // defining another DTO with public fields. With Builders
     // it's possible to partially instantiated objects. Job and
@@ -167,10 +505,10 @@ impl Job {
         job_name: String,
         description: Option<String>,
         schedule: Cron,
-        options: Option<String>,
+        image_options: Option<String>,
         image_name: String,
         command: Option<String>,
-        args: Option<String>,
+        command_args: Option<String>,
         max_retries: i32,
         status: JobStatus,
         priority: i32,
@@ -180,16 +518,16 @@ impl Job {
         timeout_seconds: Option<Duration>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
-    ) -> Job {
-        Job {
+    ) -> Self {
+        Self {
             job_id,
             job_name,
             description,
             schedule,
-            options,
+            image_options,
             image_name,
             command,
-            args,
+            command_args,
             max_retries,
             status,
             priority,
@@ -218,8 +556,8 @@ impl Job {
         &self.schedule
     }
 
-    pub fn options(&self) -> Option<&str> {
-        self.options.as_deref()
+    pub fn image_options(&self) -> Option<&str> {
+        self.image_options.as_deref()
     }
 
     pub fn image_name(&self) -> &str {
@@ -230,8 +568,8 @@ impl Job {
         self.command.as_deref()
     }
 
-    pub fn args(&self) -> Option<&str> {
-        self.args.as_deref()
+    pub fn command_args(&self) -> Option<&str> {
+        self.command_args.as_deref()
     }
 
     pub fn max_retries(&self) -> i32 {
@@ -269,10 +607,7 @@ impl Job {
     pub fn updated_at(&self) -> DateTime<Utc> {
         self.updated_at
     }
-}
 
-// TODO: move to controller layer
-impl Job {
     pub fn to_job_item(&self, queue_name: &str) -> JobItem {
         JobItem {
             job_id: self.job_id.inner().into(),
@@ -299,80 +634,13 @@ impl Job {
     }
 }
 
-#[derive(Debug)]
-pub struct ImageName(String);
-
-impl ImageName {
-    /// Returns the image name as string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug, PartialEq)]
-#[non_exhaustive]
-pub struct ContainerOptions(HashMap<String, String>);
-
-#[derive(Debug)]
-pub struct RunCommand(String);
-
-impl RunCommand {
-    /// Returns the run command as string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug)]
-pub struct CommandArgs(HashMap<String, String>);
-
-/// Represents the information needed to instantiate a new job.
-#[derive(Debug)]
-pub struct NewJob {
-    /// Unique job name
-    pub job_name: String,
-
-    /// The job description
-    pub description: Option<String>,
-
-    /// schedule of the cronjob or execution time
-    pub schedule: Cron,
-
-    /// Options for running the container
-    pub options: ContainerOptions,
-
-    /// Image name as <optional_registry>/<image_name>:tag
-    pub image_name: ImageName,
-
-    /// The command to run the container
-    pub command: RunCommand,
-
-    /// Arguments for the command
-    pub args: CommandArgs,
-
-    /// Retry the job if last execution failed
-    pub max_retries: Option<i32>,
-
-    /// Job priority
-    pub priority: Option<i32>,
-
-    /// Identifier of the queue this job belongs to
-    pub queue_name: String,
-
-    /// Maximum number of identical jobs running concurrently
-    pub max_concurrency: Option<i32>,
-
-    /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
-    pub timeout_seconds: Option<i32>,
-}
-
 pub trait JobOperations<E>: Sync + Send + 'static {
     type Err: std::error::Error;
 
     fn add_job(
         &self,
         tx: &mut E,
-        job: &NewJob,
+        job: &Job,
         queue_id: &QueueId,
     ) -> impl std::future::Future<Output = Result<JobId, Self::Err>> + Send;
 
@@ -381,26 +649,26 @@ pub trait JobOperations<E>: Sync + Send + 'static {
         &self,
         tx: &mut E,
         job_id: &JobId,
-    ) -> impl std::future::Future<Output = Result<Job, Self::Err>> + Send;
+    ) -> impl std::future::Future<Output = Result<JobResponse, Self::Err>> + Send;
 
     /// Returns true if the job with the given name already exists.
     fn get_job_by_name(
         &self,
         tx: &mut E,
         job_name: &str,
-    ) -> impl std::future::Future<Output = Result<Job, Self::Err>> + Send;
+    ) -> impl std::future::Future<Output = Result<JobResponse, Self::Err>> + Send;
 
     fn get_jobs_by_queue_id(
         &self,
         tx: &mut E,
         queue_id: &QueueId,
-    ) -> impl std::future::Future<Output = Result<Vec<Job>, Self::Err>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<JobResponse>, Self::Err>> + Send;
 
     fn get_jobs_by_queue_name(
         &self,
         tx: &mut E,
         queue_name: &str,
-    ) -> impl std::future::Future<Output = Result<Vec<Job>, Self::Err>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<JobResponse>, Self::Err>> + Send;
 
     fn deactivate_job_by_id(
         &self,
@@ -434,7 +702,7 @@ pub trait JobOperations<E>: Sync + Send + 'static {
     fn get_due_jobs(
         &self,
         tx: &mut E,
-    ) -> impl std::future::Future<Output = Result<Vec<Job>, Self::Err>> + Send;
+    ) -> impl std::future::Future<Output = Result<Vec<JobResponse>, Self::Err>> + Send;
 
     // fn update_deadlines(
     //     &self,

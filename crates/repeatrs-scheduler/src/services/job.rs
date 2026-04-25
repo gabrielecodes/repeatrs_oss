@@ -10,9 +10,12 @@
 //! - Interacting with the repository to perform database operations.
 //! - Providing a clear API for controllers.
 
-use crate::{ApiResult, controllers::job::NewJobInput, err_ctx, error::ToApiError};
+use crate::{ApiResult, controllers::job::CreateJobCommand, err_ctx, error::ToApiError};
 use repeatrs_bundles::JobBundle;
-use repeatrs_domain::{Job, JobId, JobOperations, QueueId, QueueOperations};
+use repeatrs_domain::{
+    ContainerRunCommand, Job, JobId, JobIdentity, JobOperations, JobOptions, JobResponse, QueueId,
+    QueueOperations,
+};
 use repeatrs_proto::repeatrs::JobItem;
 use repeatrs_transaction::{DatabaseContextProvider, TransactionError};
 use std::marker::PhantomData;
@@ -45,23 +48,47 @@ where
 
     /// Adds a job to a queue given the its definition.
     #[instrument(skip_all, fields(job_id = Empty), err)]
-    pub async fn add_job(&self, job_request: NewJobInput) -> ApiResult<JobId> {
+    pub async fn add_job(&self, job_request: CreateJobCommand) -> ApiResult<JobId> {
         let job_repo = self.bundle.job_repo();
         let queue_repo = self.bundle.queue_repo();
-        let new_job = job_request.inner();
+
+        let job_identity = JobIdentity::new(
+            job_request.job_name,
+            job_request.description,
+            job_request.queue_id,
+        );
+        let container_run_command = ContainerRunCommand::new(
+            job_request.run_options,
+            job_request.image_name,
+            job_request.run_command,
+            job_request.command_args,
+        );
+        let job_options = JobOptions::new(
+            job_request.schedule,
+            job_request.max_retries,
+            job_request.priority,
+            job_request.max_concurrency,
+            job_request.timeout_seconds,
+        );
 
         let result = self
             .database
             .execute(move |tx| {
                 let queue_repo = queue_repo.clone();
                 let job_repo = job_repo.clone();
-                let new_job = new_job.clone();
+
+                // instantiate job to enforce invariants
+                let new_job_info = Job::new(job_identity, container_run_command, job_options);
 
                 Box::pin(async move {
-                    let queue =
-                        err_ctx!(queue_repo.get_queue_by_name(tx, &new_job.queue_name).await)?;
+                    let queue = err_ctx!(
+                        queue_repo
+                            .get_queue_by_name(tx, &new_job_info.queue_name)
+                            .await
+                    )?;
 
-                    let job_id = err_ctx!(job_repo.add_job(tx, &new_job, &queue.queue_id).await)?;
+                    let job_id =
+                        err_ctx!(job_repo.add_job(tx, &new_job_info, &queue.queue_id).await)?;
                     Span::current().record("job_id", job_id.inner().to_string());
 
                     err_ctx!(
@@ -98,7 +125,7 @@ where
 
                     let jobs = err_ctx!(job_repo.get_jobs_by_queue_id(tx, &queue_id).await)?;
 
-                    Ok::<(Vec<Job>, String), TransactionError>((jobs, queue.queue_name))
+                    Ok::<(Vec<JobResponse>, String), TransactionError>((jobs, queue.queue_name))
                 })
             })
             .await;
@@ -124,7 +151,7 @@ where
                 Box::pin(async move {
                     let jobs = err_ctx!(job_repo.get_jobs_by_queue_name(tx, &queue_name).await)?;
 
-                    Ok::<Vec<Job>, TransactionError>(jobs)
+                    Ok::<Vec<JobResponse>, TransactionError>(jobs)
                 })
             })
             .await;

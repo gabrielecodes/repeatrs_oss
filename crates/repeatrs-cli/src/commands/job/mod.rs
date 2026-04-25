@@ -68,7 +68,7 @@ pub struct AddJobArgs {
         help = "space delimited arguments passed to the command",
         value_delimiter = ' '
     )]
-    args: Option<Vec<String>>,
+    args: Option<String>,
 
     /// Retry on failure
     #[arg(
@@ -95,7 +95,7 @@ pub struct AddJobArgs {
         long,
         help = "time duration in seconds before the job is forcefully stopped"
     )]
-    timeout_seconds: Option<i32>,
+    timeout_seconds: Option<i64>,
 
     /// If true, instead of calling the gRPC create_job, you just print the JSON
     /// of the CreateJobRequest to the terminal.
@@ -149,11 +149,11 @@ impl TryFrom<AddJobArgs> for AddJobRequest {
             queue_name,
             options: value.options,
             command: value.command,
-            args: value.args.unwrap_or_default(),
-            priority: value.priority.unwrap_or(1),
-            max_retries: value.max_retries.unwrap_or(0),
-            max_concurrency: value.max_concurrency.unwrap_or(0),
-            timeout_seconds: value.timeout_seconds.unwrap_or(7200),
+            args: value.args,
+            priority: value.priority,
+            max_retries: value.max_retries,
+            max_concurrency: value.max_concurrency,
+            timeout_seconds: value.timeout_seconds,
         };
 
         Ok(req)
@@ -211,15 +211,8 @@ impl AddJobArgs {
             .or(parsed.queue_name)
             .ok_or_else(|| Error::Cli("Missing queue name"))?;
 
-        let timeout_seconds = self
-            .timeout_seconds
-            .or(parsed.timeout_seconds)
-            .unwrap_or(7200);
-
-        let max_concurrency = self
-            .max_concurrency
-            .or(parsed.max_concurrency)
-            .unwrap_or(100);
+        let timeout_seconds = self.timeout_seconds.or(parsed.timeout_seconds);
+        let max_concurrency = self.max_concurrency.or(parsed.max_concurrency);
 
         let request = AddJobRequest {
             job_name,
@@ -229,11 +222,11 @@ impl AddJobArgs {
             queue_name,
             max_concurrency,
             timeout_seconds,
-            priority: self.priority.or(parsed.priority).unwrap_or(1),
-            max_retries: self.max_retries.or(parsed.max_retries).unwrap_or(0),
+            priority: self.priority.or(parsed.priority),
+            max_retries: self.max_retries.or(parsed.max_retries),
             options: self.options.or(parsed.options),
             command: self.command.or(parsed.command),
-            args: self.args.or(parsed.args).unwrap_or_default(),
+            args: self.args.or(parsed.args),
         };
 
         Ok(request)

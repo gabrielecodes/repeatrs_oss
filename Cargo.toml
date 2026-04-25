@@ -4,15 +4,24 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/repeatrs-scheduler",
+    "crates/repeatrs-db",
+    "crates/repeatrs-cli",
+    "crates/repeatrs-proto",
+    "crates/repeatrs-domain",
+    "crates/repeatrs-main",
+    "crates/repeatrs-transaction",
+    "crates/repeatrs-bundles",
+]
 resolver = "2"
 
 [workspace.dependencies]
+# repeatrs-auditor = { path = "crates/repeatrs-auditor" }
 repeatrs-scheduler = { path = "crates/repeatrs-scheduler" }
 repeatrs-db = { path = "crates/repeatrs-db" }
 repeatrs-cli = { path = "crates/repeatrs-cli" }
 repeatrs-proto = { path = "crates/repeatrs-proto" }
-# repeatrs-auditor = { path = "crates/repeatrs-auditor" }
 repeatrs-domain = { path = "crates/repeatrs-domain" }
 repeatrs-main = { path = "crates/repeatrs-main" }
 repeatrs-nats = { path = "crates/repeatrs-nats" }

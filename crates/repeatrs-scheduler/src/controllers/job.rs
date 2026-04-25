@@ -24,9 +24,6 @@ use tokio::sync::Notify;
 use tonic::{Request, Response, Status};
 use tracing::{Span, error, field::Empty};
 
-const FORBIDDEN_CONTAINER_OPTIONS: [&str; 4] =
-    ["--privileged", "--net=host", "cap-add=ALL", "-v /:"];
-
 pub struct JobController<E, B, D>
 where
     B: JobBundle<E>,
@@ -58,7 +55,7 @@ where
     D: for<'tx> DatabaseContextProvider<'tx, E> + Send + Sync + 'static,
     E: Sync + Send + 'static,
 {
-    #[tracing::instrument(name = "add_job", skip_all, err, fields(job_name = Empty, queue_id = Empty))]
+    #[tracing::instrument(name = "add_job", skip_all, err, fields(job_name = Empty, queue_name = Empty))]
     async fn add_job(
         &self,
         request: Request<AddJobRequest>,
@@ -66,7 +63,7 @@ where
         let req = request.into_inner();
 
         Span::current().record("job_name", &req.job_name);
-        Span::current().record("queue_id", &req.queue_id);
+        Span::current().record("queue_name", &req.queue_name);
 
         let job_request = CreateJobCommand::try_from(req).map_status_error("Invalid input")?;
 
@@ -96,7 +93,7 @@ where
 
         let queue_identifier = identifier.queue_identifier.ok_or_else(|| {
             tracing::warn!("Missing queue identifier");
-            return Status::invalid_argument("Missing queue id or name");
+            Status::invalid_argument("Missing queue id or name")
         })?;
 
         let result = match queue_identifier {
@@ -130,7 +127,7 @@ where
 
         let job_identifier = identifier.job_identifier.ok_or_else(|| {
             tracing::warn!("Missing job identifier");
-            return Status::invalid_argument("Missing job id or name");
+            Status::invalid_argument("Missing job id or name")
         })?;
 
         let result = match job_identifier {
@@ -168,7 +165,7 @@ where
 
         let job_identifier = identifier.job_identifier.ok_or_else(|| {
             tracing::warn!("Missing job identifier");
-            return Status::invalid_argument("Missing job id or name");
+            Status::invalid_argument("Missing job id or name")
         })?;
 
         let result = match job_identifier {
@@ -204,7 +201,7 @@ pub struct CreateJobCommand {
     pub job_name: SanitizedString,
 
     /// Unique queue identifier
-    pub queue_id: QueueId,
+    pub queue_name: SanitizedString,
 
     /// The job description
     pub description: Option<String>,
@@ -234,7 +231,7 @@ pub struct CreateJobCommand {
     pub max_concurrency: Option<i32>,
 
     /// A hard limit on the duration of the job, after which the job is terminated. Default: 2 hours
-    pub timeout_seconds: Option<i32>,
+    pub timeout_seconds: Option<i64>,
 }
 
 impl TryFrom<AddJobRequest> for CreateJobCommand {
@@ -246,9 +243,8 @@ impl TryFrom<AddJobRequest> for CreateJobCommand {
             ApiError::Validation(err)
         })?;
 
-        let queue_id = QueueId::try_from(value.queue_id)?;
-
         let job_name = SanitizedString::new(value.job_name)?;
+        let queue_name = SanitizedString::new(value.queue_name)?;
 
         let input_options = value.options.unwrap_or_default();
         let run_options: ContainerOptions = input_options.try_into()?;
@@ -262,7 +258,7 @@ impl TryFrom<AddJobRequest> for CreateJobCommand {
 
         let new_job = CreateJobCommand {
             job_name,
-            queue_id,
+            queue_name,
             description: value.description,
             schedule,
             run_options,

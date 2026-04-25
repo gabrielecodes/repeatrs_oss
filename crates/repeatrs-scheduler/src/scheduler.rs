@@ -23,7 +23,7 @@ use crate::services::scheduling::SchedulingService;
 
 use repeatrs_bundles::JobSchedulerBundle;
 use repeatrs_transaction::DatabaseContextProvider;
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{Notify, watch};
 use tracing::{error, info};
 
@@ -40,8 +40,6 @@ where
 
     /// Receiver of the shutdown signal.
     shutdown: watch::Receiver<()>,
-
-    _marker: PhantomData<E>,
 }
 
 impl<E, S, D> Scheduler<E, S, D>
@@ -59,7 +57,6 @@ where
             scheduling_service,
             wakeup,
             shutdown,
-            _marker: Default::default(),
         }
     }
 

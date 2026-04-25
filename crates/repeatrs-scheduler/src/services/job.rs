@@ -52,18 +52,21 @@ where
         let job_repo = self.bundle.job_repo();
         let queue_repo = self.bundle.queue_repo();
 
-        let job_identity = JobIdentity::new(
+        // validates
+        let valid_identity = JobIdentity::new(
             job_request.job_name,
             job_request.description,
-            job_request.queue_id,
+            job_request.queue_name,
         );
-        let container_run_command = ContainerRunCommand::new(
+
+        let valid_run_command = ContainerRunCommand::new(
             job_request.run_options,
             job_request.image_name,
             job_request.run_command,
             job_request.command_args,
         );
-        let job_options = JobOptions::new(
+
+        let valid_options = JobOptions::new(
             job_request.schedule,
             job_request.max_retries,
             job_request.priority,
@@ -77,13 +80,17 @@ where
                 let queue_repo = queue_repo.clone();
                 let job_repo = job_repo.clone();
 
+                let valid_identity = valid_identity.clone();
+                let valid_run_command = valid_run_command.clone();
+                let valid_options = valid_options.clone();
+
                 // instantiate job to enforce invariants
-                let new_job_info = Job::new(job_identity, container_run_command, job_options);
+                let new_job_info = Job::new(valid_identity, valid_run_command, valid_options);
 
                 Box::pin(async move {
                     let queue = err_ctx!(
                         queue_repo
-                            .get_queue_by_name(tx, &new_job_info.queue_name)
+                            .get_queue_by_name(tx, new_job_info.queue_name())
                             .await
                     )?;
 

@@ -7,8 +7,14 @@ use repeatrs_proto::repeatrs::JobItem;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Write;
+
 use std::{fmt::Display, ops::Deref, str::FromStr};
 use uuid::Uuid;
+
+const MAX_RETRIES: i32 = 10;
+const DEFAULT_TIMEOUT_SECONDS: i64 = 7200;
+const FORBIDDEN_CONTAINER_OPTIONS: [&str; 4] =
+    ["--privileged", "--net=host", "cap-add=ALL", "-v /:"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JobId(Uuid);
@@ -251,7 +257,7 @@ impl TryFrom<String> for CommandArgs {
 }
 
 /// Informations related to the identity of the job
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JobIdentity {
     /// Unique job name
     job_name: SanitizedString,
@@ -260,36 +266,40 @@ pub struct JobIdentity {
     description: Option<String>,
 
     /// Identifier of the queue this job belongs to
-    queue_id: QueueId,
+    queue_name: SanitizedString,
 }
 
 impl JobIdentity {
-    pub fn new(job_name: SanitizedString, description: Option<String>, queue_id: QueueId) -> Self {
+    pub fn new(
+        job_name: SanitizedString,
+        description: Option<String>,
+        queue_name: SanitizedString,
+    ) -> Self {
         Self {
             job_name,
             description,
-            queue_id,
+            queue_name,
         }
     }
 }
 
 /// Options regarding the job execution
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JobOptions {
     /// schedule of the cronjob or execution time
     schedule: Cron,
 
     /// Retry the job if last execution failed
-    max_retries: Option<i32>,
+    max_retries: i32,
 
     /// Job priority
-    priority: Option<i32>,
+    priority: i32,
 
     /// Maximum number of identical jobs running concurrently
-    max_concurrency: Option<i32>,
+    max_concurrency: i32,
 
     /// A hard limit on the duration of the job, after which the job is terminated.
-    timeout_seconds: Option<Duration>,
+    timeout_seconds: Duration,
 }
 
 impl JobOptions {
@@ -298,19 +308,34 @@ impl JobOptions {
         max_retries: Option<i32>,
         priority: Option<i32>,
         max_concurrency: Option<i32>,
-        timeout_seconds: Option<Duration>,
+        timeout_seconds: Option<i64>,
     ) -> Self {
+        let max_retries = match max_retries {
+            Some(val) => val.clamp(0, MAX_RETRIES),
+            None => 0,
+        };
+
+        let priority = match priority {
+            Some(val) => val.clamp(1, i32::MAX),
+            None => 1,
+        };
+
+        let duration = match timeout_seconds {
+            Some(secs) => Duration::seconds(secs),
+            None => Duration::seconds(DEFAULT_TIMEOUT_SECONDS),
+        };
+
         Self {
             schedule,
             max_retries,
             priority,
-            max_concurrency,
-            timeout_seconds,
+            max_concurrency: max_concurrency.unwrap_or(0),
+            timeout_seconds: duration,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContainerRunCommand {
     /// Options for running the container
     run_options: ContainerOptions,
@@ -332,6 +357,7 @@ impl ContainerRunCommand {
         cmd: RunCmd,
         command_args: CommandArgs,
     ) -> Self {
+        // TODO: add validation
         Self {
             run_options,
             image_name,
@@ -414,26 +440,23 @@ impl Job {
     }
 
     pub fn max_retries(&self) -> i32 {
-        self.options.max_retries.unwrap_or(3)
+        self.options.max_retries
     }
 
     pub fn priority(&self) -> i32 {
-        self.options.priority.unwrap_or(1)
+        self.options.priority
     }
 
-    pub fn queue_id(&self) -> &QueueId {
-        &self.identity.queue_id
+    pub fn queue_name(&self) -> &SanitizedString {
+        &self.identity.queue_name
     }
 
     pub fn max_concurrency(&self) -> i32 {
-        self.options.max_concurrency.unwrap_or(0)
+        self.options.max_concurrency
     }
 
     pub fn timeout_seconds(&self) -> Duration {
-        // FIXME: fix default value
-        self.options
-            .timeout_seconds
-            .unwrap_or(Duration::minutes(7200))
+        self.options.timeout_seconds
     }
 }
 

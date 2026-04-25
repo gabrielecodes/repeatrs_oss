@@ -37,8 +37,8 @@ async fn main() -> Result<(), AppError> {
     let queue_service = QueueService::new(queue_bundle, database_context.clone());
     let queue_controller = QueueController::new(queue_service);
 
-    let job_runs_bundle = PgJobSchedulerBundle;
-    let scheduling_agent = SchedulingService::new(job_runs_bundle, database_context.clone());
+    let scheduler_bundle = PgJobSchedulerBundle;
+    let scheduling_agent = SchedulingService::new(scheduler_bundle, database_context.clone());
     let scheduler = Scheduler::new(scheduling_agent, wakeup.clone(), shutdown_rx.clone());
 
     let scheduler_handle = tokio::spawn(async move {

@@ -25,7 +25,7 @@ use tracing::{Span, field::Empty, info, instrument};
 pub struct JobService<E, B, D>
 where
     B: JobBundle<E>,
-    D: for<'tx> DatabaseContextProvider<'tx, E>,
+    D: for<'tx> DatabaseContextProvider<'tx>,
 {
     bundle: B,
     database: D,
@@ -35,7 +35,7 @@ where
 impl<E, B, D> JobService<E, B, D>
 where
     B: JobBundle<E> + Sync + Send + 'static,
-    D: for<'tx> DatabaseContextProvider<'tx, E> + Sync + Send + 'static,
+    D: for<'tx> DatabaseContextProvider<'tx> + Sync + Send + 'static,
     E: Sync + Send + 'static,
 {
     pub fn new(bundle: B, database: D) -> Self {
@@ -76,7 +76,7 @@ where
 
         let result = self
             .database
-            .execute(move |tx| {
+            .execute(|tx| async move {
                 let queue_repo = queue_repo.clone();
                 let job_repo = job_repo.clone();
 
@@ -87,25 +87,22 @@ where
                 // instantiate job to enforce invariants
                 let new_job_info = Job::new(valid_identity, valid_run_command, valid_options);
 
-                Box::pin(async move {
-                    let queue = err_ctx!(
-                        queue_repo
-                            .get_queue_by_name(tx, new_job_info.queue_name())
-                            .await
-                    )?;
+                let queue = err_ctx!(
+                    queue_repo
+                        .get_queue_by_name(tx, new_job_info.queue_name())
+                        .await
+                )?;
 
-                    let job_id =
-                        err_ctx!(job_repo.add_job(tx, &new_job_info, &queue.queue_id).await)?;
-                    Span::current().record("job_id", job_id.inner().to_string());
+                let job_id = err_ctx!(job_repo.add_job(tx, &new_job_info, &queue.queue_id).await)?;
+                Span::current().record("job_id", job_id.inner().to_string());
 
-                    err_ctx!(
-                        queue_repo
-                            .increment_used_capacity(tx, &queue.queue_id)
-                            .await
-                    )?;
+                err_ctx!(
+                    queue_repo
+                        .increment_used_capacity(tx, &queue.queue_id)
+                        .await
+                )?;
 
-                    Ok::<JobId, TransactionError>(job_id)
-                })
+                Ok::<JobId, TransactionError>(job_id)
             })
             .await;
 

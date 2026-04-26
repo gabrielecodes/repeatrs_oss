@@ -22,9 +22,9 @@ impl<'e> JobScheduleStateOperations<Transaction<'e, Postgres>> for PgJobSchedule
         job_schedules: &[NewJobScheduleState],
     ) -> DbResult<()> {
         let db_job_schedules: Vec<DbJobScheduleState> =
-            job_schedules.into_iter().map(|s| s.into()).collect();
+            job_schedules.iter().map(|s| s.into()).collect();
 
-        let _ = upsert_jobs_schedule(&mut **tx, &db_job_schedules).await?;
+        upsert_jobs_schedule(&mut **tx, &db_job_schedules).await?;
 
         Ok(())
     }
@@ -49,7 +49,7 @@ impl From<&NewJobScheduleState> for DbJobScheduleState {
     fn from(value: &NewJobScheduleState) -> Self {
         DbJobScheduleState {
             job_id: value.job_id_inner(),
-            next_run_at: value.next_run_at().clone(),
+            next_run_at: value.next_run_at(),
         }
     }
 }
@@ -64,7 +64,7 @@ impl From<&JobScheduleState> for DbJobScheduleState {
     fn from(value: &JobScheduleState) -> Self {
         DbJobScheduleState {
             job_id: value.job_id_inner(),
-            next_run_at: value.next_run_at().clone(),
+            next_run_at: value.next_run_at().to_owned(),
         }
     }
 }

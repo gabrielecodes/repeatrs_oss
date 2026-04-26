@@ -266,6 +266,7 @@ struct JobRow {
     /// Job creation timestamp
     created_at: DateTime<Utc>,
 
+    /// Time when the job was last updated
     updated_at: DateTime<Utc>,
 }
 

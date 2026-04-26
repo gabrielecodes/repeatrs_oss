@@ -89,6 +89,12 @@ impl PgJobSchedulerBundle {
     }
 }
 
+impl Default for PgJobSchedulerBundle {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl<E> JobSchedulerBundle<E> for PgJobSchedulerBundle
 where
     PgJobRepository: JobOperations<E> + Clone,

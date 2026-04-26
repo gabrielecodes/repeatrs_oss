@@ -1,9 +1,9 @@
-use futures::future::BoxFuture;
+// use futures::future::BoxFuture;
 use rand::RngExt;
 use repeatrs_db::error::DbError;
 use sqlx::{PgPool, Postgres, Transaction};
 use std::error::Error;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::result::Result;
 use tokio::time::Duration;
 
@@ -18,64 +18,70 @@ impl DatabaseContext {
     }
 }
 
-pub trait AsyncFnMut<'a, Arg> {
-    type Fut: Future<Output = Self::Output> + Send + 'a;
-    type Output;
-    fn call(&mut self, arg: &'a mut Arg) -> Self::Fut;
+// pub trait AsyncFnMut<'a, Arg> {
+//     type Fut: Future<Output = Self::Output> + Send + 'a;
+//     type Output;
+//     fn call(&mut self, arg: &'a mut Arg) -> Self::Fut;
+// }
+
+// impl<'a, Arg: 'a, F, Fut, Out> AsyncFnMut<'a, Arg> for F
+// where
+//     F: FnMut(&'a mut Arg) -> Fut,
+//     Fut: Future<Output = Out> + Send + 'a,
+// {
+//     type Fut = Fut;
+//     type Output = Out;
+//     fn call(&mut self, arg: &'a mut Arg) -> Self::Fut {
+//         self(arg)
+//     }
+// }
+
+pub trait AsyncTxFn<'a, 'tx, T, E>: Send {
+    type Fut: Future<Output = Result<T, E>> + Send + 'a;
+    fn call(&mut self, tx: &'a mut Transaction<'tx, Postgres>) -> Self::Fut;
 }
 
-impl<'a, Arg: 'a, F, Fut, Out> AsyncFnMut<'a, Arg> for F
+impl<'a: 'tx, 'tx, T, Err, F, Fut> AsyncTxFn<'a, 'tx, T, Err> for F
 where
-    F: FnMut(&'a mut Arg) -> Fut,
-    Fut: Future<Output = Out> + Send + 'a,
+    F: FnMut(&'a mut Transaction<'a, Postgres>) -> Fut + Send,
+    Fut: Future<Output = Result<T, Err>> + Send + 'a,
 {
     type Fut = Fut;
-    type Output = Out;
-    fn call(&mut self, arg: &'a mut Arg) -> Self::Fut {
-        self(arg)
+    fn call(&mut self, tx: &'a mut Transaction<'tx, Postgres>) -> Self::Fut {
+        (self)(tx)
     }
 }
 
 #[async_trait::async_trait]
-pub trait DatabaseContextProvider<'tx, E> {
-    async fn execute<F, T, Err>(&self, f: F) -> Result<T, Err>
+pub trait DatabaseContextProvider<'tx> {
+    async fn execute<F, T: Send, Err>(&self, f: F) -> Result<T, Err>
     where
-        F: for<'a> FnMut(&'a mut E) -> BoxFuture<'a, Result<T, Err>> + Send,
-        T: Send,
-        Err: Error + From<sqlx::Error> + Send;
-
-    async fn run<F, T, Err>(&self, mut f: F) -> Result<T, Err>
-    where
-        F: for<'a> AsyncFnMut<'a, E, Output = Result<T, Err>> + Send,
-        T: Send,
-        Err: Error + From<sqlx::Error> + Send,
-    {
-        self.execute(|tx| Box::pin(f.call(tx))).await
-    }
+        F: for<'a> AsyncTxFn<'a, 'tx, T, Err> + Send + Sync,
+        TransactionError: From<Err>,
+        Err: Error + From<sqlx::Error> + Send + Sync + 'static;
 }
 
 #[async_trait::async_trait]
-impl<'tx> DatabaseContextProvider<'tx, Transaction<'tx, Postgres>> for DatabaseContext {
-    async fn execute<F, T, Err>(&self, mut f: F) -> Result<T, Err>
+impl<'tx> DatabaseContextProvider<'tx> for DatabaseContext {
+    async fn execute<F, T: Send, Err>(&self, mut f: F) -> Result<T, Err>
     where
-        F: for<'a> FnMut(&'a mut Transaction<'tx, Postgres>) -> BoxFuture<'a, Result<T, Err>>
-            + Send,
-        T: Send,
-        Err: Error + From<sqlx::Error> + Send,
+        F: for<'a> AsyncTxFn<'a, 'tx, T, Err> + Send + Sync,
+        TransactionError: From<Err>,
+        Err: Error + From<sqlx::Error> + Send + Sync + 'static,
     {
         let mut attempts = 0;
         let max_attempts = 5;
 
         loop {
-            let mut tx = self.pool.begin().await?;
+            let mut tx = self.pool.begin().await.unwrap();
             let trace_id = tracing::Span::current().id();
 
             if let Some(id) = trace_id {
                 let tag_query = format!("SET LOCAL app.trace_id = '{}'", id.into_u64());
-                sqlx::query(&tag_query).execute(&mut *tx).await?;
+                sqlx::query(&tag_query).execute(&mut *tx).await.unwrap();
             }
 
-            let boxed_closure = Box::pin(f.call(&mut tx));
+            let boxed_closure = f.call(&mut tx);
 
             match boxed_closure.await {
                 Ok(result) => match tx.commit().await {
@@ -134,40 +140,45 @@ fn get_retry_category(err: &sqlx::Error) -> RetryPolicy {
     RetryPolicy::Fail
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TransactionError {
-    Transaction(sqlx::Error),
-    Database(DbError),
+    #[error("{0}")]
+    Transaction(#[from] sqlx::Error),
+
+    #[error("{0}")]
+    Query(#[from] DbError),
+
+    #[error("Transaction error at line {0}, file {1}")]
     Error(u32, &'static str),
 }
 
-impl Error for TransactionError {}
+// impl Error for TransactionError {}
 
-impl Display for TransactionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TransactionError::Transaction(e) => {
-                write!(f, "{}", e)
-            }
-            TransactionError::Database(e) => {
-                write!(f, "{}", e)
-            }
-            TransactionError::Error(line, file) => {
-                write!(f, "line: {}, file: {}", line, file)
-            }
-        }
-    }
-}
+// impl Display for TransactionError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             TransactionError::Transaction(e) => {
+//                 write!(f, "{}", e)
+//             }
+//             TransactionError::Database(e) => {
+//                 write!(f, "{}", e)
+//             }
+//             TransactionError::Error(line, file) => {
+//                 write!(f, "line: {}, file: {}", line, file)
+//             }
+//         }
+//     }
+// }
 
-impl From<sqlx::Error> for TransactionError {
-    fn from(value: sqlx::Error) -> Self {
-        Self::Transaction(value)
-    }
-}
+// impl From<sqlx::Error> for TransactionError {
+//     fn from(value: sqlx::Error) -> Self {
+//         Self::Transaction(value)
+//     }
+// }
 
-impl From<DbError> for TransactionError {
-    fn from(value: DbError) -> Self {
-        Self::Database(value)
-    }
-}
+// impl From<DbError> for TransactionError {
+//     fn from(value: DbError) -> Self {
+//         Self::Database(value)
+//     }
+// }
